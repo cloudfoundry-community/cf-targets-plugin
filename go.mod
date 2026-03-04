@@ -14,7 +14,7 @@ require (
 require (
 	code.cloudfoundry.org/diego-ssh v0.0.0-20240408164108-f465a655f448 // indirect
 	code.cloudfoundry.org/jsonry v1.1.4 // indirect
-	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06 // indirect
+	github.com/sabhiram/go-gitignore v0.0.0-20180611051255-d3107576ba94 // indirect
 )
 
 require (
