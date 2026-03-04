@@ -60,7 +60,7 @@ production (current)
 ```
 
 When there are changes that have not been saved, a unified diff of the changes will be shown.  For sensitive data, a
-sha26 checksum is displayed instead.  The sha checksum makes for easier reading of the changes.
+sha256 checksum is displayed instead.  The sha checksum makes it easier for reading the actual changes.
 
 ```
 $ cf set-target test
