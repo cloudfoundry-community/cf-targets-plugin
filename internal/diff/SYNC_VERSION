@@ -1,1 +1,26 @@
-v0.42.0
+# Upstream sync point for vendored internal/diff package
+#
+# Source: golang.org/x/tools/internal/diff
+# Repository: https://github.com/golang/tools (mirror of go.googlesource.com/tools)
+# Branch: master
+#
+# How to choose the sync tag:
+#   golang.org/x/tools uses semver tags (v0.NN.0) on the master branch.
+#   Pick the latest stable tag from: https://github.com/golang/tools/tags
+#   Then check whether internal/diff/ has changes since the current sync:
+#     git log --oneline <current-tag>..v0.NN.0 -- internal/diff/
+#   Only sync if there are meaningful changes to files we track.
+#
+# To run the automated check: make check-diff-upstream
+
+upstream-tag:        v0.42.0
+upstream-commit:     009367f5c17a8d4c45a961a3a509277190a9a6f0
+upstream-date:       2026-02-09
+upstream-branch:     master
+
+# Last upstream commit touching internal/diff/ at this tag:
+upstream-diff-commit:  093e57f07aea00dd994934696ad9fcf2c49109cc
+upstream-diff-date:    2026-01-17
+upstream-diff-subject: gopls: replace all uses of Myers diff
+
+synced-on: 2026-03

@@ -43,8 +43,10 @@ command -v git >/dev/null 2>&1 || die "git is not installed"
 
 [[ -f "${SYNC_VERSION_FILE}" ]] || die "SYNC_VERSION file not found at ${SYNC_VERSION_FILE}"
 
-SYNC_TAG="$(tr -d '[:space:]' < "${SYNC_VERSION_FILE}")"
-[[ -n "${SYNC_TAG}" ]] || die "SYNC_VERSION file is empty"
+SYNC_TAG_LINES="$(grep -c '^upstream-tag:' "${SYNC_VERSION_FILE}")"
+[[ "${SYNC_TAG_LINES}" -eq 1 ]] || die "Expected exactly 1 upstream-tag line in SYNC_VERSION, found ${SYNC_TAG_LINES}"
+SYNC_TAG="$(grep '^upstream-tag:' "${SYNC_VERSION_FILE}" | awk '{print $2}')"
+[[ -n "${SYNC_TAG}" ]] || die "Could not read upstream-tag from SYNC_VERSION file"
 
 echo "=== Upstream Diff Sync Check ==="
 echo ""
