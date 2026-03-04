@@ -17,7 +17,6 @@ import (
 	"code.cloudfoundry.org/cli/cf/configuration/coreconfig"
 	"code.cloudfoundry.org/cli/plugin"
 	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff"
-	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff/myers"
 )
 
 // There are three files that target plugin keeps track of
@@ -265,7 +264,7 @@ func (c *TargetsPlugin) showDiff(targetPath string) {
 	target, err := json.MarshalIndent(jsonDataTarget, "", " ")
 	c.checkError(err)
 
-	edits := myers.ComputeEdits(string(current), string(target))
+	edits := diff.Lines(string(current), string(target))
 	if len(edits) != 0 {
 		udiff, err := diff.ToUnified("Current", "Target", string(current), edits, 0)
 		c.checkError(err)

@@ -69,6 +69,47 @@ func TestDiffRunesSimple(t *testing.T) {
 	}
 }
 
+func TestDiffLinesIdentical(t *testing.T) {
+	diffs := DiffLines([]string{"a\n", "b\n"}, []string{"a\n", "b\n"})
+	if len(diffs) != 0 {
+		t.Errorf("DiffLines() for identical = %v, want empty", diffs)
+	}
+}
+
+func TestDiffLinesSimple(t *testing.T) {
+	a := []string{"line1\n", "line2\n", "line3\n"}
+	b := []string{"line1\n", "changed\n", "line3\n"}
+	diffs := DiffLines(a, b)
+	if len(diffs) == 0 {
+		t.Fatal("DiffLines() returned no diffs")
+	}
+	d := diffs[0]
+	if d.Start != 1 || d.End != 2 {
+		t.Errorf("DiffLines() deletion range = [%d,%d), want [1,2)", d.Start, d.End)
+	}
+	if d.ReplStart != 1 || d.ReplEnd != 2 {
+		t.Errorf("DiffLines() replacement range = [%d,%d), want [1,2)", d.ReplStart, d.ReplEnd)
+	}
+}
+
+func TestDiffLinesInsert(t *testing.T) {
+	a := []string{"line1\n", "line3\n"}
+	b := []string{"line1\n", "line2\n", "line3\n"}
+	diffs := DiffLines(a, b)
+	if len(diffs) == 0 {
+		t.Fatal("DiffLines() returned no diffs for insertion")
+	}
+}
+
+func TestDiffLinesDelete(t *testing.T) {
+	a := []string{"line1\n", "line2\n", "line3\n"}
+	b := []string{"line1\n", "line3\n"}
+	diffs := DiffLines(a, b)
+	if len(diffs) == 0 {
+		t.Fatal("DiffLines() returned no diffs for deletion")
+	}
+}
+
 func TestDiffStringsEmpty(t *testing.T) {
 	tests := []struct {
 		name string

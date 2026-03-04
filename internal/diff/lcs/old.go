@@ -27,6 +27,10 @@ func DiffBytes(a, b []byte) []Diff { return diff(bytesSeqs{a, b}) }
 // DiffRunes returns the differences between two rune sequences.
 func DiffRunes(a, b []rune) []Diff { return diff(runesSeqs{a, b}) }
 
+// DiffLines returns the differences between two lists of lines.
+// It treats each string as an atomic unit, comparable by ==.
+func DiffLines(a, b []string) []Diff { return diff(linesSeqs{a, b}) }
+
 func diff(seqs sequences) []Diff {
 	// A limit on how deeply the LCS algorithm should search. The value is just a guess.
 	const maxDiffs = 100

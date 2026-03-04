@@ -245,6 +245,71 @@ func TestMergeEmpty(t *testing.T) {
 	}
 }
 
+func TestLinesIdentical(t *testing.T) {
+	edits := Lines("hello\n", "hello\n")
+	if edits != nil {
+		t.Errorf("Lines() for identical strings = %v, want nil", edits)
+	}
+}
+
+func TestLinesSimple(t *testing.T) {
+	before := "line1\nline2\nline3\n"
+	after := "line1\nmodified\nline3\n"
+	edits := Lines(before, after)
+	if len(edits) == 0 {
+		t.Fatal("Lines() returned no edits for different strings")
+	}
+	got, err := Apply(before, edits)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if got != after {
+		t.Errorf("Apply(Lines()) = %q, want %q", got, after)
+	}
+}
+
+func TestLinesInsert(t *testing.T) {
+	before := "line1\nline3\n"
+	after := "line1\nline2\nline3\n"
+	edits := Lines(before, after)
+	got, err := Apply(before, edits)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if got != after {
+		t.Errorf("Apply(Lines()) = %q, want %q", got, after)
+	}
+}
+
+func TestLinesDelete(t *testing.T) {
+	before := "line1\nline2\nline3\n"
+	after := "line1\nline3\n"
+	edits := Lines(before, after)
+	got, err := Apply(before, edits)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if got != after {
+		t.Errorf("Apply(Lines()) = %q, want %q", got, after)
+	}
+}
+
+func TestLinesToUnified(t *testing.T) {
+	before := "line1\nline2\nline3\n"
+	after := "line1\nchanged\nline3\n"
+	edits := Lines(before, after)
+	result, err := ToUnified("before.txt", "after.txt", before, edits, 0)
+	if err != nil {
+		t.Fatalf("ToUnified() error = %v", err)
+	}
+	if !strings.Contains(result, "-line2") {
+		t.Error("missing deletion of line2")
+	}
+	if !strings.Contains(result, "+changed") {
+		t.Error("missing insertion of changed")
+	}
+}
+
 // TestRoundTrip verifies that applying edits from Strings produces the expected result.
 func TestRoundTrip(t *testing.T) {
 	tests := []struct {

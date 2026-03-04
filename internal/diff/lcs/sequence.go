@@ -45,6 +45,16 @@ func (s runesSeqs) commonSuffixLen(ai, aj, bi, bj int) int {
 	return commonSuffixLenRunes(s.a[ai:aj:aj], s.b[bi:bj:bj])
 }
 
+type linesSeqs struct{ a, b []string }
+
+func (s linesSeqs) lengths() (int, int) { return len(s.a), len(s.b) }
+func (s linesSeqs) commonPrefixLen(ai, aj, bi, bj int) int {
+	return commonPrefixLenLines(s.a[ai:aj], s.b[bi:bj])
+}
+func (s linesSeqs) commonSuffixLen(ai, aj, bi, bj int) int {
+	return commonSuffixLenLines(s.a[ai:aj], s.b[bi:bj])
+}
+
 // TODO(adonovan): optimize these functions using ideas from:
 // - https://go.dev/cl/408116 common.go
 // - https://go.dev/cl/421435 xor_generic.go
@@ -96,6 +106,23 @@ func commonSuffixLenRunes(a, b []rune) int {
 	return i
 }
 func commonSuffixLenString(a, b string) int {
+	n := min(len(a), len(b))
+	i := 0
+	for i < n && a[len(a)-1-i] == b[len(b)-1-i] {
+		i++
+	}
+	return i
+}
+
+func commonPrefixLenLines(a, b []string) int {
+	n := min(len(a), len(b))
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
+}
+func commonSuffixLenLines(a, b []string) int {
 	n := min(len(a), len(b))
 	i := 0
 	for i < n && a[len(a)-1-i] == b[len(b)-1-i] {
