@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	realos "os"
+	"path/filepath"
 
 	. "code.cloudfoundry.org/cli/cf/util/testhelpers/io"
 	. "code.cloudfoundry.org/cli/cf/util/testhelpers/matchers"
@@ -29,6 +31,7 @@ type FakeOS struct {
 	writefileCalledWithPath    string
 	writefileCalledWithContent []byte
 	writefileCalledWithMode    realos.FileMode
+	removeShouldReturnError    error
 	readdirShouldReturn        []realos.DirEntry
 	readfileShouldReturn       []byte
 }
@@ -38,15 +41,17 @@ func (os *FakeOS) Exit(code int) {
 	os.exitCalledWithCode = code
 }
 
-func (os *FakeOS) Mkdir(path string, mode realos.FileMode) {
+func (os *FakeOS) Mkdir(path string, mode realos.FileMode) error {
 	os.mkdirCalled++
 	os.mkdirCalledWithPath = path
 	os.mkdirCalledWithMode = mode
+	return nil
 }
 
-func (os *FakeOS) Remove(path string) {
+func (os *FakeOS) Remove(path string) error {
 	os.removeCalled++
 	os.removeCalledWithPath = path
+	return os.removeShouldReturnError
 }
 
 func (os *FakeOS) Symlink(target string, source string) error {
@@ -169,6 +174,50 @@ var _ = Describe("TargetsPlugin", func() {
 			Expect(fakeOS.exitCalled).To(Equal(0))
 			Expect(output).To(ContainSubstrings([]string{"No targets have been saved"}))
 			Expect(output).To(ContainSubstrings([]string{"cf", "save-target", "NAME"}))
+		})
+	})
+
+	Describe("DeleteTargetCommand", func() {
+		var tmpDir string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = realos.MkdirTemp("", "cf-targets-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			targetsPlugin.targetsPath = tmpDir
+			targetsPlugin.currentPath = filepath.Join(tmpDir, "current")
+		})
+
+		AfterEach(func() {
+			realos.RemoveAll(tmpDir)
+		})
+
+		It("deletes an existing target", func() {
+			targetFile := filepath.Join(tmpDir, "mytest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"delete-target", "mytest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.removeCalledWithPath).To(Equal(targetFile))
+			Expect(output).To(ContainSubstrings([]string{"Deleted target", "mytest"}))
+		})
+
+		It("exits with error when Remove fails", func() {
+			targetFile := filepath.Join(tmpDir, "mytest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			fakeOS.removeShouldReturnError = errors.New("permission denied")
+
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"delete-target", "mytest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(1))
+			Expect(fakeOS.exitCalledWithCode).To(Equal(1))
+			Expect(output).To(ContainSubstrings([]string{"Error:", "permission denied"}))
 		})
 	})
 

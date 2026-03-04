@@ -44,17 +44,17 @@ type TargetStatus struct {
 type RealOS struct{}
 type OS interface {
 	Exit(int)
-	Mkdir(string, realos.FileMode)
-	Remove(string)
+	Mkdir(string, realos.FileMode) error
+	Remove(string) error
 	Symlink(string, string) error
 	ReadDir(string) ([]realos.DirEntry, error)
 	ReadFile(string) ([]byte, error)
 	WriteFile(string, []byte, realos.FileMode) error
 }
 
-func (*RealOS) Exit(code int)                                  { realos.Exit(code) }
-func (*RealOS) Mkdir(path string, mode realos.FileMode)        { realos.Mkdir(path, mode) }
-func (*RealOS) Remove(path string)                             { realos.Remove(path) }
+func (*RealOS) Exit(code int)                                   { realos.Exit(code) }
+func (*RealOS) Mkdir(path string, mode realos.FileMode) error   { return realos.Mkdir(path, mode) }
+func (*RealOS) Remove(path string) error                        { return realos.Remove(path) }
 func (*RealOS) Symlink(target string, source string) error     { return realos.Symlink(target, source) }
 func (*RealOS) ReadDir(path string) ([]realos.DirEntry, error) { return realos.ReadDir(path) }
 func (*RealOS) ReadFile(path string) ([]byte, error)           { return realos.ReadFile(path) }
@@ -87,7 +87,7 @@ func getVersion(version, toInt string) int {
 func newTargetsPlugin() *TargetsPlugin {
 	configPath, _ := confighelpers.DefaultFilePath()
 	targetsPath := filepath.Join(filepath.Dir(configPath), "targets")
-	os.Mkdir(targetsPath, 0700)
+	_ = os.Mkdir(targetsPath, 0700) // ignore error; directory may already exist
 	return &TargetsPlugin{
 		configPath:  configPath,
 		targetsPath: targetsPath,
@@ -378,9 +378,11 @@ func (c *TargetsPlugin) DeleteTargetCommand(args []string) {
 		fmt.Println("Target", targetName, "does not exist")
 		panic(1)
 	}
-	os.Remove(targetPath)
+	err := os.Remove(targetPath)
+	c.checkError(err)
 	if c.isCurrent(targetName) {
-		os.Remove(c.currentPath)
+		err = os.Remove(c.currentPath)
+		c.checkError(err)
 	}
 	fmt.Println("Deleted target", targetName)
 }
@@ -413,7 +415,7 @@ func (c *TargetsPlugin) checkStatus() {
 	currentConfig := configuration.NewDiskPersistor(c.configPath)
 	currentTarget := configuration.NewDiskPersistor(c.currentPath)
 	if !currentTarget.Exists() {
-		os.Remove(c.currentPath)
+		_ = os.Remove(c.currentPath) // best-effort cleanup of stale symlink
 		c.status = TargetStatus{false, "", true, false}
 		return
 	}
@@ -447,7 +449,7 @@ func (c *TargetsPlugin) copyContents(sourcePath, targetPath string) {
 }
 
 func (c *TargetsPlugin) linkCurrent(targetPath string) {
-	os.Remove(c.currentPath)
+	_ = os.Remove(c.currentPath) // ignore error; file may not exist
 	err := os.Symlink(targetPath, c.currentPath)
 	c.checkError(err)
 }
