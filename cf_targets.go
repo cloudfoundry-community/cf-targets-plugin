@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
@@ -49,16 +50,25 @@ type OS interface {
 	ReadDir(string) ([]realos.DirEntry, error)
 	ReadFile(string) ([]byte, error)
 	WriteFile(string, []byte, realos.FileMode) error
+	ReadLine() (string, error)
 }
 
-func (*RealOS) Exit(code int)                                   { realos.Exit(code) }
-func (*RealOS) Mkdir(path string, mode realos.FileMode) error   { return realos.Mkdir(path, mode) }
-func (*RealOS) Remove(path string) error                        { return realos.Remove(path) }
+func (*RealOS) Exit(code int)                                  { realos.Exit(code) }
+func (*RealOS) Mkdir(path string, mode realos.FileMode) error  { return realos.Mkdir(path, mode) }
+func (*RealOS) Remove(path string) error                       { return realos.Remove(path) }
 func (*RealOS) Symlink(target string, source string) error     { return realos.Symlink(target, source) }
 func (*RealOS) ReadDir(path string) ([]realos.DirEntry, error) { return realos.ReadDir(path) }
 func (*RealOS) ReadFile(path string) ([]byte, error)           { return realos.ReadFile(path) }
 func (*RealOS) WriteFile(path string, content []byte, mode realos.FileMode) error {
 	return realos.WriteFile(path, content, mode)
+}
+func (*RealOS) ReadLine() (string, error) {
+	reader := bufio.NewReader(realos.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 var os OS
@@ -136,6 +146,17 @@ func (c *TargetsPlugin) GetMetadata() plugin.PluginMetadata {
 				HelpText: "Delete a saved target",
 				UsageDetails: plugin.Usage{
 					Usage: "cf delete-target NAME",
+				},
+			},
+			{
+				Name:     "switch-target",
+				HelpText: "Save current target and switch to another",
+				UsageDetails: plugin.Usage{
+					Usage: "cf switch-target [-f] [--save-as NAME] TARGET",
+					Options: map[string]string{
+						"f":       "discard unsaved changes to the current target",
+						"save-as": "save the current (unnamed) target as NAME before switching",
+					},
 				},
 			},
 		},
@@ -226,6 +247,8 @@ func (c *TargetsPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 		c.SaveTargetCommand(args)
 	} else if args[0] == "delete-target" {
 		c.DeleteTargetCommand(args)
+	} else if args[0] == "switch-target" {
+		c.SwitchTargetCommand(args)
 	}
 }
 
@@ -386,6 +409,54 @@ func (c *TargetsPlugin) DeleteTargetCommand(args []string) {
 	fmt.Println("Deleted target", targetName)
 }
 
+func (c *TargetsPlugin) SwitchTargetCommand(args []string) {
+	flagSet := flag.NewFlagSet("switch-target", flag.ContinueOnError)
+	force := flagSet.Bool("f", false, "force")
+	saveAs := flagSet.String("save-as", "", "save current target as NAME")
+	err := flagSet.Parse(args[1:])
+	if err != nil || len(flagSet.Args()) != 1 {
+		c.exitWithUsage("switch-target")
+	}
+	targetName := flagSet.Arg(0)
+	targetPath := c.targetPath(targetName)
+	if !c.targetExists(targetPath) {
+		fmt.Println("Target", targetName, "does not exist.")
+		panic(1)
+	}
+
+	if !*force && c.status.currentNeedsSaving {
+		if c.status.currentHasName {
+			// Auto-save the named current target
+			savePath := c.targetPath(c.status.currentName)
+			c.copyContents(c.configPath, savePath)
+			fmt.Println("Saved current target as", c.status.currentName)
+		} else {
+			// Unnamed target — need a name
+			name := *saveAs
+			if name == "" {
+				fmt.Print("Save current target as: ")
+				name, err = os.ReadLine()
+				if err != nil {
+					fmt.Println("Error:", err)
+					panic(1)
+				}
+			}
+			if name == "" {
+				fmt.Println("No name provided. Use -f to discard changes or --save-as to provide a name.")
+				panic(1)
+			}
+			savePath := c.targetPath(name)
+			c.copyContents(c.configPath, savePath)
+			c.linkCurrent(savePath)
+			fmt.Println("Saved current target as", name)
+		}
+	}
+
+	c.copyContents(targetPath, c.configPath)
+	c.linkCurrent(targetPath)
+	fmt.Println("Set target to", targetName)
+}
+
 func (c *TargetsPlugin) getTargets() []string {
 	var targets []string
 	files, _ := os.ReadDir(c.targetsPath)
@@ -415,7 +486,7 @@ func (c *TargetsPlugin) checkStatus() {
 	currentTarget := configuration.NewDiskPersistor(c.currentPath)
 	if !currentTarget.Exists() {
 		_ = os.Remove(c.currentPath) // best-effort cleanup of stale symlink
-		c.status = TargetStatus{false, "", true, false}
+		c.status = TargetStatus{false, "", false, false}
 		return
 	}
 

@@ -34,6 +34,9 @@ type FakeOS struct {
 	removeShouldReturnError    error
 	readdirShouldReturn        []realos.DirEntry
 	readfileShouldReturn       []byte
+	readlineCalled             int
+	readlineShouldReturn       string
+	readlineShouldReturnError  error
 }
 
 func (os *FakeOS) Exit(code int) {
@@ -79,6 +82,11 @@ func (os *FakeOS) WriteFile(path string, content []byte, mode realos.FileMode) e
 	os.writefileCalledWithContent = content
 	os.writefileCalledWithMode = mode
 	return nil
+}
+
+func (os *FakeOS) ReadLine() (string, error) {
+	os.readlineCalled++
+	return os.readlineShouldReturn, os.readlineShouldReturnError
 }
 
 var _ = Describe("TargetsPlugin", func() {
@@ -218,6 +226,217 @@ var _ = Describe("TargetsPlugin", func() {
 			Expect(fakeOS.exitCalled).To(Equal(1))
 			Expect(fakeOS.exitCalledWithCode).To(Equal(1))
 			Expect(output).To(ContainSubstrings([]string{"Error:", "permission denied"}))
+		})
+	})
+
+	Describe("checkStatus bug fix", func() {
+		It("sets currentNeedsSaving to false when no symlink exists", func() {
+			tmpDir, err := realos.MkdirTemp("", "cf-targets-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = realos.RemoveAll(tmpDir) }()
+
+			targetsPlugin.currentPath = filepath.Join(tmpDir, "nonexistent-current")
+			targetsPlugin.checkStatus()
+			Expect(targetsPlugin.status.currentNeedsSaving).To(BeFalse())
+			Expect(targetsPlugin.status.currentHasName).To(BeFalse())
+		})
+
+		It("allows set-target without -f when no symlink exists", func() {
+			var tmpDir string
+			var err error
+			tmpDir, err = realos.MkdirTemp("", "cf-targets-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = realos.RemoveAll(tmpDir) }()
+
+			targetsPlugin.targetsPath = tmpDir
+			targetsPlugin.currentPath = filepath.Join(tmpDir, "current")
+
+			targetFile := filepath.Join(tmpDir, "mytest"+targetsPlugin.suffix)
+			err = realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"set-target", "mytest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "mytest"}))
+		})
+	})
+
+	Describe("SwitchTargetCommand", func() {
+		var tmpDir string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = realos.MkdirTemp("", "cf-targets-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			targetsPlugin.targetsPath = tmpDir
+			targetsPlugin.currentPath = filepath.Join(tmpDir, "current")
+		})
+
+		AfterEach(func() {
+			_ = realos.RemoveAll(tmpDir)
+		})
+
+		It("displays usage when called with no arguments", func() {
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"switch-target"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(1))
+			Expect(fakeOS.exitCalledWithCode).To(Equal(1))
+			Expect(output).To(ContainSubstrings([]string{"Usage:", "cf", "switch-target"}))
+		})
+
+		It("errors when target does not exist", func() {
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"switch-target", "nonexistent"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(1))
+			Expect(output).To(ContainSubstrings([]string{"does not exist"}))
+		})
+
+		It("skips save with -f and just switches", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"switch-target", "-f", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // config only
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+		})
+
+		It("auto-saves named current target before switching", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate named current target with unsaved changes
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(2)) // save + switch
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "origin"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+		})
+
+		It("just switches when named current has no changes", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{true, "origin", false, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // config only
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+		})
+
+		It("saves unnamed target with --save-as before switching", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{false, "", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "dev", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(2))
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "dev"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+		})
+
+		It("prompts interactively for unnamed target and saves with entered name", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{false, "", true, false}
+			fakeOS.readlineShouldReturn = "myname"
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.readlineCalled).To(Equal(1))
+			Expect(fakeOS.writefileCalled).To(Equal(2))
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "myname"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+		})
+
+		It("errors when interactive prompt returns empty name", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{false, "", true, false}
+			fakeOS.readlineShouldReturn = ""
+
+			output := CaptureOutput(func() {
+				defer func() {
+					if r := recover(); r != nil {
+						if code, ok := r.(int); ok {
+							fakeOS.Exit(code)
+						} else {
+							panic(r)
+						}
+					}
+				}()
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(1))
+			Expect(output).To(ContainSubstrings([]string{"No name provided"}))
+			Expect(output).To(ContainSubstrings([]string{"-f"}))
+			Expect(output).To(ContainSubstrings([]string{"--save-as"}))
+		})
+
+		It("errors when ReadLine returns an error", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{false, "", true, false}
+			fakeOS.readlineShouldReturnError = errors.New("input closed")
+
+			output := CaptureOutput(func() {
+				defer func() {
+					if r := recover(); r != nil {
+						if code, ok := r.(int); ok {
+							fakeOS.Exit(code)
+						} else {
+							panic(r)
+						}
+					}
+				}()
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(1))
+			Expect(output).To(ContainSubstrings([]string{"Error:", "input closed"}))
+		})
+
+		It("just switches on fresh install (no symlink, currentNeedsSaving=false)", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Fresh install: checkStatus sets currentNeedsSaving=false (after bug fix)
+			output := CaptureOutput(func() {
+				targetsPlugin.Run(fakeCliConnection, []string{"switch-target", "dest"})
+			})
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.readlineCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // config only
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
 		})
 	})
 

@@ -108,6 +108,7 @@ Your current target has not been saved. Use save-target first, or use -f to disc
 |`save-target`|`cf save-target [-f] [<name>]`|save the current target for later use|
 |`set-target`|`cf set-target [-f] <name>`|restore a previously saved target|
 |`delete-target`|`cf delete-target <name>`|delete a previously saved target|
+|`switch-target`|`cf switch-target [-f] [--save-as NAME] <name>`|save current target and switch to another|
 
 ## Vendored Diff Code
 
