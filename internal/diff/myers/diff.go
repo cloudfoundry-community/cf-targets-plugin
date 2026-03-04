@@ -8,7 +8,7 @@ package myers
 import (
 	"strings"
 
-	"github.com/norman-abramovitz/cf-targets-plugin/diff"
+	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff"
 )
 
 // Sources:

@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"unicode/utf8"
 
-	"github.com/norman-abramovitz/cf-targets-plugin/diff/lcs"
+	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff/lcs"
 )
 
 // Strings computes the differences between two strings.
