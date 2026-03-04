@@ -109,6 +109,38 @@ Your current target has not been saved. Use save-target first, or use -f to disc
 |`set-target`|`cf set-target [-f] <name>`|restore a previously saved target|
 |`delete-target`|`cf delete-target <name>`|delete a previously saved target|
 
+## Vendored Diff Code
+
+The unified diff display is powered by a local copy of Go's internal diff
+package, vendored from
+[`golang.org/x/tools/internal/diff`](https://github.com/golang/tools/tree/master/internal/diff)
+(currently synced to **v0.42.0**). The code lives in `internal/diff/` and is
+licensed under the Go Authors' BSD license.
+
+This code is vendored because the upstream package uses Go's `internal/`
+convention, which prevents direct import by external modules.
+
+### Why not a third-party package?
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| [hexops/gotextdiff](https://github.com/hexops/gotextdiff) | **Archived** (Feb 2024) | Was the most commonly recommended Go diff library. Itself a re-export of the same `x/tools/internal/diff` code. |
+| [aymanbagabas/go-udiff](https://github.com/aymanbagabas/go-udiff) | Active | Also derived from `x/tools/internal/diff`. Viable but adds an external dependency for code we already vendor. |
+| [sourcegraph/go-diff](https://github.com/sourcegraph/go-diff) | Active | Parses/formats unified diffs but does not compute diffs — different use case. |
+
+Since the most recommended package (`gotextdiff`) was archived and was itself
+a re-export of the same upstream code, maintaining a local vendored copy
+remains the most appropriate approach.
+
+### Checking for upstream updates
+
+1. Compare the latest [x/tools tag](https://github.com/golang/tools/tags) against the current sync point (v0.42.0)
+2. Review changes in `internal/diff/` since the sync point
+3. Manually port relevant changes to `internal/diff/`
+4. Run `go test ./internal/diff/...` to verify
+
+See `CLAUDE.md` for additional developer notes.
+
 ## Extended Build Metadata
 
 The extended build metadata is available by executing the plugin itself.
