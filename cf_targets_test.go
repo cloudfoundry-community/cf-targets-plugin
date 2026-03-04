@@ -29,7 +29,7 @@ type FakeOS struct {
 	writefileCalledWithPath    string
 	writefileCalledWithContent []byte
 	writefileCalledWithMode    realos.FileMode
-	readdirShouldReturn        []realos.FileInfo
+	readdirShouldReturn        []realos.DirEntry
 	readfileShouldReturn       []byte
 }
 
@@ -56,7 +56,7 @@ func (os *FakeOS) Symlink(target string, source string) error {
 	return nil
 }
 
-func (os *FakeOS) ReadDir(path string) ([]realos.FileInfo, error) {
+func (os *FakeOS) ReadDir(path string) ([]realos.DirEntry, error) {
 	os.readdirCalled++
 	os.readdirCalledWithPath = path
 	return os.readdirShouldReturn, nil

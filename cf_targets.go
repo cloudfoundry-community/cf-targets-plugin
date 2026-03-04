@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	realio "io/ioutil"
 	realos "os"
 
 	"code.cloudfoundry.org/cli/cf/configuration"
@@ -48,7 +47,7 @@ type OS interface {
 	Mkdir(string, realos.FileMode)
 	Remove(string)
 	Symlink(string, string) error
-	ReadDir(string) ([]realos.FileInfo, error)
+	ReadDir(string) ([]realos.DirEntry, error)
 	ReadFile(string) ([]byte, error)
 	WriteFile(string, []byte, realos.FileMode) error
 }
@@ -57,10 +56,10 @@ func (*RealOS) Exit(code int)                                  { realos.Exit(cod
 func (*RealOS) Mkdir(path string, mode realos.FileMode)        { realos.Mkdir(path, mode) }
 func (*RealOS) Remove(path string)                             { realos.Remove(path) }
 func (*RealOS) Symlink(target string, source string) error     { return realos.Symlink(target, source) }
-func (*RealOS) ReadDir(path string) ([]realos.FileInfo, error) { return realio.ReadDir(path) }
-func (*RealOS) ReadFile(path string) ([]byte, error)           { return realio.ReadFile(path) }
+func (*RealOS) ReadDir(path string) ([]realos.DirEntry, error) { return realos.ReadDir(path) }
+func (*RealOS) ReadFile(path string) ([]byte, error)           { return realos.ReadFile(path) }
 func (*RealOS) WriteFile(path string, content []byte, mode realos.FileMode) error {
-	return realio.WriteFile(path, content, mode)
+	return realos.WriteFile(path, content, mode)
 }
 
 var os OS
