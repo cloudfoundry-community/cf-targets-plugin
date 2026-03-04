@@ -238,31 +238,31 @@ func createRedaction(jsonMap map[string]interface{}, key string) string {
 }
 
 func (c *TargetsPlugin) showDiff(targetPath string) {
-	var json_data_current map[string]interface{}
-	var json_data_target map[string]interface{}
+	var jsonDataCurrent map[string]interface{}
+	var jsonDataTarget map[string]interface{}
 	var err error
 
 	currentContent, err := os.ReadFile(c.currentPath)
 	c.checkError(err)
 	targetContent, err := os.ReadFile(targetPath)
 	c.checkError(err)
-	err = json.Unmarshal(currentContent, &json_data_current)
+	err = json.Unmarshal(currentContent, &jsonDataCurrent)
 	c.checkError(err)
-	err = json.Unmarshal(targetContent, &json_data_target)
+	err = json.Unmarshal(targetContent, &jsonDataTarget)
 	c.checkError(err)
 
-	json_data_current["AccessToken"] = createRedaction(json_data_current, "AccessToken")
-	json_data_target["AccessToken"] = createRedaction(json_data_target, "AccessToken")
+	jsonDataCurrent["AccessToken"] = createRedaction(jsonDataCurrent, "AccessToken")
+	jsonDataTarget["AccessToken"] = createRedaction(jsonDataTarget, "AccessToken")
 
-	json_data_current["RefreshToken"] = createRedaction(json_data_current, "RefreshToken")
-	json_data_target["RefreshToken"] = createRedaction(json_data_target, "RefreshToken")
+	jsonDataCurrent["RefreshToken"] = createRedaction(jsonDataCurrent, "RefreshToken")
+	jsonDataTarget["RefreshToken"] = createRedaction(jsonDataTarget, "RefreshToken")
 
-	json_data_current["UAAOAuthClientSecret"] = createRedaction(json_data_current, "UAAOAuthClientSecret")
-	json_data_target["UAAOAuthClientSecret"] = createRedaction(json_data_target, "UAAOAuthClientSecret")
+	jsonDataCurrent["UAAOAuthClientSecret"] = createRedaction(jsonDataCurrent, "UAAOAuthClientSecret")
+	jsonDataTarget["UAAOAuthClientSecret"] = createRedaction(jsonDataTarget, "UAAOAuthClientSecret")
 
-	current, err := json.MarshalIndent(json_data_current, "", " ")
+	current, err := json.MarshalIndent(jsonDataCurrent, "", " ")
 	c.checkError(err)
-	target, err := json.MarshalIndent(json_data_target, "", " ")
+	target, err := json.MarshalIndent(jsonDataTarget, "", " ")
 	c.checkError(err)
 
 	edits := myers.ComputeEdits(string(current), string(target))
