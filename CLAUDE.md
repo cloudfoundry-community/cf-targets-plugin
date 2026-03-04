@@ -9,9 +9,15 @@
 ## Vendored Diff Code (`internal/diff/`)
 
 The unified diff display uses a local copy of Go's internal diff package,
-vendored from [`golang.org/x/tools/internal/diff`](https://github.com/golang/tools/tree/master/internal/diff).
+vendored from `golang.org/x/tools/internal/diff`.
 
 This code is under the Go Authors' BSD license (see `internal/diff/LICENSE`).
+
+### Upstream references
+
+- **pkg.go.dev**: https://pkg.go.dev/golang.org/x/tools/internal/diff
+- **GitHub (mirror)**: https://github.com/golang/tools/tree/master/internal/diff
+- **Canonical source**: https://go.googlesource.com/tools/+/refs/heads/master/internal/diff/
 
 ### Current upstream sync point
 

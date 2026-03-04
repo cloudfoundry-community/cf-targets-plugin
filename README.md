@@ -112,10 +112,14 @@ Your current target has not been saved. Use save-target first, or use -f to disc
 ## Vendored Diff Code
 
 The unified diff display is powered by a local copy of Go's internal diff
-package, vendored from
-[`golang.org/x/tools/internal/diff`](https://github.com/golang/tools/tree/master/internal/diff)
+package, vendored from `golang.org/x/tools/internal/diff`
 (currently synced to **v0.42.0**). The code lives in `internal/diff/` and is
 licensed under the Go Authors' BSD license.
+
+Upstream references:
+- [pkg.go.dev](https://pkg.go.dev/golang.org/x/tools/internal/diff)
+- [GitHub mirror](https://github.com/golang/tools/tree/master/internal/diff)
+- [Canonical source](https://go.googlesource.com/tools/+/refs/heads/master/internal/diff/)
 
 This code is vendored because the upstream package uses Go's `internal/`
 convention, which prevents direct import by external modules.
