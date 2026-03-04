@@ -138,12 +138,14 @@ remains the most appropriate approach.
 
 ### Checking for upstream updates
 
-1. Compare the latest [x/tools tag](https://github.com/golang/tools/tags) against the current sync point (v0.42.0)
-2. Review changes in `internal/diff/` since the sync point
-3. Manually port relevant changes to `internal/diff/`
-4. Run `go test ./internal/diff/...` to verify
+Run the automated sync check:
+```
+make check-diff-upstream
+```
 
-See `CLAUDE.md` for additional developer notes.
+This compares the sync tag in `internal/diff/SYNC_VERSION` against upstream
+HEAD and reports whether any tracked files have changed. See `CLAUDE.md`
+for manual fallback steps.
 
 ## Extended Build Metadata
 
@@ -204,3 +206,8 @@ Clean up the build or install target generated artifacts
 ```
 gmake clean
 ```
+
+> **Note:** The legacy `build-all.sh` script has been removed. Its
+> functionality is now covered by the Makefile:
+> - Development builds: `make build`
+> - Release builds: `make ci-release VERSION=x.y.z`

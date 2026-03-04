@@ -21,7 +21,7 @@ This code is under the Go Authors' BSD license (see `internal/diff/LICENSE`).
 
 ### Current upstream sync point
 
-**golang.org/x/tools v0.42.0** (synced March 2026)
+Recorded in `internal/diff/SYNC_VERSION` (currently **v0.42.0**, synced March 2026).
 
 ### Key files
 
@@ -38,17 +38,29 @@ unified diffs of JSON config files.
 
 ### How to check for updates
 
+Run the automated check:
+```
+make check-diff-upstream
+```
+
+This clones upstream, reads the sync tag from `internal/diff/SYNC_VERSION`,
+and reports whether any tracked files have changed. Exit code 0 means in sync,
+1 means changes detected.
+
+**Manual fallback** (if the script is unavailable):
+
 1. Check the latest tag at https://github.com/golang/tools/tags
-2. Compare against current sync point (v0.42.0)
+2. Compare against the sync tag in `internal/diff/SYNC_VERSION`
 3. Review the upstream changelog for `internal/diff/`:
    ```
-   git log --oneline v0.42.0..HEAD -- internal/diff/
+   git log --oneline <sync-tag>..HEAD -- internal/diff/
    ```
    (in a clone of golang.org/x/tools)
 4. If there are meaningful changes, manually port them to `internal/diff/`.
    The code is vendored because upstream uses `internal/` which prevents
    direct import.
-5. Run `go test ./internal/diff/...` to verify after any sync.
+5. Update `internal/diff/SYNC_VERSION` to the new tag.
+6. Run `go test ./internal/diff/...` to verify after any sync.
 
 ### Why not use a third-party diff package?
 

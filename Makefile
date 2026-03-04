@@ -222,6 +222,13 @@ endef
 
 $(foreach target,$(TARGETS), $(eval $(call build-target,$(word 1, $(subst /, ,$(target))),$(word 2, $(subst /, ,$(target))),$(SEMVER_BUILDMETA))))
 
+##@ Upstream Sync
+
+.PHONY: check-diff-upstream
+
+check-diff-upstream: ## Check for upstream changes to vendored diff package
+	@scripts/check-diff-upstream.sh
+
 ##@ Cleanup
 
 .PHONY: clean release-clean distclean
