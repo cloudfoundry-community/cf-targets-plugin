@@ -426,6 +426,8 @@ func (c *TargetsPlugin) SwitchTargetCommand(args []string) {
 
 	if !*force && c.status.currentNeedsSaving {
 		if c.status.currentHasName {
+			// Show what changed before auto-saving
+			c.showDiff(c.configPath)
 			// Auto-save the named current target
 			savePath := c.targetPath(c.status.currentName)
 			c.copyContents(c.configPath, savePath)

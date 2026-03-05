@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	realos "os"
 	"path/filepath"
@@ -37,6 +38,7 @@ type FakeOS struct {
 	readlineCalled             int
 	readlineShouldReturn       string
 	readlineShouldReturnError  error
+	readfileShouldReturnMap    map[string][]byte
 }
 
 func (os *FakeOS) Exit(code int) {
@@ -73,6 +75,11 @@ func (os *FakeOS) ReadDir(path string) ([]realos.DirEntry, error) {
 func (os *FakeOS) ReadFile(path string) ([]byte, error) {
 	os.readfileCalled++
 	os.readfileCalledWithPath = path
+	if os.readfileShouldReturnMap != nil {
+		if data, ok := os.readfileShouldReturnMap[path]; ok {
+			return data, nil
+		}
+	}
 	return os.readfileShouldReturn, nil
 }
 
@@ -308,10 +315,24 @@ var _ = Describe("TargetsPlugin", func() {
 			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
 		})
 
-		It("auto-saves named current target before switching", func() {
+		It("auto-saves named current target and shows diff before switching", func() {
 			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
 			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
 			Expect(err).NotTo(HaveOccurred())
+
+			// Provide differing JSON for showDiff: currentPath (saved) vs configPath (live)
+			savedJSON, _ := json.MarshalIndent(map[string]interface{}{
+				"AccessToken": "tok", "RefreshToken": "ref", "UAAOAuthClientSecret": "sec",
+				"ColorEnabled": "true",
+			}, "", " ")
+			liveJSON, _ := json.MarshalIndent(map[string]interface{}{
+				"AccessToken": "tok", "RefreshToken": "ref", "UAAOAuthClientSecret": "sec",
+				"ColorEnabled": "false",
+			}, "", " ")
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath: savedJSON,
+				targetsPlugin.configPath:  liveJSON,
+			}
 
 			// Simulate named current target with unsaved changes
 			targetsPlugin.status = TargetStatus{true, "origin", true, false}
@@ -321,6 +342,9 @@ var _ = Describe("TargetsPlugin", func() {
 			})
 			Expect(fakeOS.exitCalled).To(Equal(0))
 			Expect(fakeOS.writefileCalled).To(Equal(2)) // save + switch
+			// Diff should appear before the save message
+			Expect(output).To(ContainSubstrings([]string{"---", "Current"}))
+			Expect(output).To(ContainSubstrings([]string{"+++", "Target"}))
 			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "origin"}))
 			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
 		})
@@ -437,6 +461,145 @@ var _ = Describe("TargetsPlugin", func() {
 			Expect(fakeOS.readlineCalled).To(Equal(0))
 			Expect(fakeOS.writefileCalled).To(Equal(1)) // config only
 			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+		})
+	})
+
+	Describe("createBuildMeta", func() {
+		It("returns os.arch when no build metadata", func() {
+			Expect(createBuildMeta("darwin", "arm64", "")).To(Equal("darwin.arm64"))
+		})
+
+		It("returns os.arch.build when build metadata provided", func() {
+			Expect(createBuildMeta("linux", "amd64", "ci")).To(Equal("linux.amd64.ci"))
+		})
+
+		It("trims whitespace from all parts", func() {
+			Expect(createBuildMeta("  darwin ", " arm64  ", " ci ")).To(Equal("darwin.arm64.ci"))
+		})
+
+		It("panics when os is empty", func() {
+			Expect(func() { createBuildMeta("", "arm64", "") }).To(PanicWith(ContainSubstring("Go meta data is missing")))
+		})
+
+		It("panics when arch is empty", func() {
+			Expect(func() { createBuildMeta("darwin", "", "") }).To(PanicWith(ContainSubstring("Go meta data is missing")))
+		})
+
+		It("panics when os is only whitespace", func() {
+			Expect(func() { createBuildMeta("   ", "arm64", "") }).To(PanicWith(ContainSubstring("Go meta data is missing")))
+		})
+	})
+
+	Describe("createSemVer", func() {
+		It("returns major.minor.patch", func() {
+			Expect(createSemVer("1", "2", "3", "", "")).To(Equal("1.2.3"))
+		})
+
+		It("appends prerelease with hyphen", func() {
+			Expect(createSemVer("1", "2", "3", "beta", "")).To(Equal("1.2.3-beta"))
+		})
+
+		It("appends build with plus", func() {
+			Expect(createSemVer("1", "2", "3", "", "linux.amd64")).To(Equal("1.2.3+linux.amd64"))
+		})
+
+		It("appends both prerelease and build", func() {
+			Expect(createSemVer("1", "2", "3", "dev", "darwin.arm64")).To(Equal("1.2.3-dev+darwin.arm64"))
+		})
+
+		It("trims whitespace from all parts", func() {
+			Expect(createSemVer(" 1 ", " 2 ", " 3 ", " rc1 ", " meta ")).To(Equal("1.2.3-rc1+meta"))
+		})
+
+		It("panics when major is empty", func() {
+			Expect(func() { createSemVer("", "2", "3", "", "") }).To(PanicWith(ContainSubstring("Semanic version is missing")))
+		})
+
+		It("panics when minor is empty", func() {
+			Expect(func() { createSemVer("1", "", "3", "", "") }).To(PanicWith(ContainSubstring("Semanic version is missing")))
+		})
+
+		It("panics when patch is empty", func() {
+			Expect(func() { createSemVer("1", "2", "", "", "") }).To(PanicWith(ContainSubstring("Semanic version is missing")))
+		})
+	})
+
+	Describe("showDiff", func() {
+		makeJSON := func(overrides map[string]interface{}) []byte {
+			base := map[string]interface{}{
+				"AccessToken":          "token-abc",
+				"RefreshToken":         "refresh-xyz",
+				"UAAOAuthClientSecret": "secret-123",
+				"Target":               "https://api.example.com",
+				"ColorEnabled":         "true",
+			}
+			for k, v := range overrides {
+				base[k] = v
+			}
+			data, err := json.MarshalIndent(base, "", " ")
+			Expect(err).NotTo(HaveOccurred())
+			return data
+		}
+
+		It("prints unified diff when files differ", func() {
+			currentJSON := makeJSON(map[string]interface{}{"ColorEnabled": "true"})
+			targetJSON := makeJSON(map[string]interface{}{"ColorEnabled": "false"})
+
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath:             currentJSON,
+				targetsPlugin.targetPath("other"): targetJSON,
+			}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.showDiff(targetsPlugin.targetPath("other"))
+			})
+			Expect(output).To(ContainSubstrings([]string{"---", "Current"}))
+			Expect(output).To(ContainSubstrings([]string{"+++", "Target"}))
+			Expect(output).To(ContainSubstrings([]string{`"true"`}))
+			Expect(output).To(ContainSubstrings([]string{`"false"`}))
+		})
+
+		It("prints no differences when files are identical", func() {
+			jsonData := makeJSON(nil)
+
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath:             jsonData,
+				targetsPlugin.targetPath("same"): jsonData,
+			}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.showDiff(targetsPlugin.targetPath("same"))
+			})
+			Expect(output).To(ContainSubstrings([]string{"hmmm no differences"}))
+		})
+
+		It("redacts sensitive fields in diff output", func() {
+			currentJSON := makeJSON(map[string]interface{}{
+				"AccessToken":  "current-token",
+				"RefreshToken": "current-refresh",
+			})
+			targetJSON := makeJSON(map[string]interface{}{
+				"AccessToken":  "different-token",
+				"RefreshToken": "different-refresh",
+			})
+
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath:                currentJSON,
+				targetsPlugin.targetPath("redacted"): targetJSON,
+			}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.showDiff(targetsPlugin.targetPath("redacted"))
+			})
+			// Tokens should be redacted
+			Expect(output).To(ContainSubstrings([]string{"REDACTED sha256("}))
+			// Raw tokens should NOT appear
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("current-token"))
+				Expect(line).NotTo(ContainSubstring("different-token"))
+				Expect(line).NotTo(ContainSubstring("current-refresh"))
+				Expect(line).NotTo(ContainSubstring("different-refresh"))
+			}
 		})
 	})
 
