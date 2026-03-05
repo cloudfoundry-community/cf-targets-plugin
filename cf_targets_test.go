@@ -232,7 +232,7 @@ var _ = Describe("TargetsPlugin", func() {
 			})
 			Expect(fakeOS.exitCalled).To(Equal(1))
 			Expect(fakeOS.exitCalledWithCode).To(Equal(1))
-			Expect(output).To(ContainSubstrings([]string{"Error:", "permission denied"}))
+			Expect(output).To(ContainSubstrings([]string{"FATAL:", "permission denied"}))
 		})
 	})
 
@@ -600,6 +600,28 @@ var _ = Describe("TargetsPlugin", func() {
 				Expect(line).NotTo(ContainSubstring("current-refresh"))
 				Expect(line).NotTo(ContainSubstring("different-refresh"))
 			}
+		})
+
+		It("warns and continues when redacted fields are missing", func() {
+			// JSON without AccessToken, RefreshToken, or UAAOAuthClientSecret
+			minimalJSON := []byte(`{"Target": "https://api.example.com", "ColorEnabled": "true"}`)
+			otherJSON := []byte(`{"Target": "https://api.example.com", "ColorEnabled": "false"}`)
+
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath:                minimalJSON,
+				targetsPlugin.targetPath("minimal"): otherJSON,
+			}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.showDiff(targetsPlugin.targetPath("minimal"))
+			})
+			// Warnings for missing fields
+			Expect(output).To(ContainSubstrings([]string{"Warning:", "AccessToken"}))
+			Expect(output).To(ContainSubstrings([]string{"Warning:", "RefreshToken"}))
+			Expect(output).To(ContainSubstrings([]string{"Warning:", "UAAOAuthClientSecret"}))
+			// Diff still runs
+			Expect(output).To(ContainSubstrings([]string{"---", "Current"}))
+			Expect(output).To(ContainSubstrings([]string{"+++", "Target"}))
 		})
 	})
 

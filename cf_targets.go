@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -252,11 +253,19 @@ func (c *TargetsPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 	}
 }
 
-func createRedaction(jsonMap map[string]interface{}, key string) string {
-	var valueAssertion interface{}
-	valueAssertion = jsonMap[key]
-	currentSum := sha256.Sum256([]byte(valueAssertion.(string)))
-	return fmt.Sprintf("REDACTED sha256(%x)", currentSum)
+func redactField(jsonMap map[string]interface{}, key string) {
+	val, ok := jsonMap[key]
+	if !ok {
+		fmt.Printf("Warning: expected field %q not found in config\n", key)
+		return
+	}
+	str, ok := val.(string)
+	if !ok {
+		fmt.Printf("Warning: field %q is not a string\n", key)
+		return
+	}
+	sum := sha256.Sum256([]byte(str))
+	jsonMap[key] = fmt.Sprintf("REDACTED sha256(%x)", sum)
 }
 
 func (c *TargetsPlugin) showDiff(targetPath string) {
@@ -273,14 +282,10 @@ func (c *TargetsPlugin) showDiff(targetPath string) {
 	err = json.Unmarshal(targetContent, &jsonDataTarget)
 	c.checkError(err)
 
-	jsonDataCurrent["AccessToken"] = createRedaction(jsonDataCurrent, "AccessToken")
-	jsonDataTarget["AccessToken"] = createRedaction(jsonDataTarget, "AccessToken")
-
-	jsonDataCurrent["RefreshToken"] = createRedaction(jsonDataCurrent, "RefreshToken")
-	jsonDataTarget["RefreshToken"] = createRedaction(jsonDataTarget, "RefreshToken")
-
-	jsonDataCurrent["UAAOAuthClientSecret"] = createRedaction(jsonDataCurrent, "UAAOAuthClientSecret")
-	jsonDataTarget["UAAOAuthClientSecret"] = createRedaction(jsonDataTarget, "UAAOAuthClientSecret")
+	for _, key := range []string{"AccessToken", "RefreshToken", "UAAOAuthClientSecret"} {
+		redactField(jsonDataCurrent, key)
+		redactField(jsonDataTarget, key)
+	}
 
 	current, err := json.MarshalIndent(jsonDataCurrent, "", " ")
 	c.checkError(err)
@@ -532,7 +537,8 @@ func (c *TargetsPlugin) targetPath(targetName string) string {
 
 func (c *TargetsPlugin) checkError(err error) {
 	if err != nil {
-		fmt.Println("Error:", err)
+		_, file, line, _ := runtime.Caller(1)
+		fmt.Printf("FATAL: %s:%d: %v\n", filepath.Base(file), line, err)
 		panic(1)
 	}
 }
@@ -542,6 +548,7 @@ func (c *TargetsPlugin) exitWithUsage(command string) {
 	for _, candidate := range metadata.Commands {
 		if candidate.Name == command {
 			fmt.Println("Usage: " + candidate.UsageDetails.Usage)
+			fmt.Printf("FATAL: invalid syntax for command %q\n", command)
 			panic(1)
 		}
 	}

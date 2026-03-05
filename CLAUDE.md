@@ -89,6 +89,22 @@ make govulncheck    # dependency vulnerability check
 make verify         # all of the above
 ```
 
+## Sensitive Field Redaction
+
+The `showDiff` function in `cf_targets.go` redacts sensitive fields before
+displaying unified diffs. Currently redacted fields:
+
+- `AccessToken`
+- `RefreshToken`
+- `UAAOAuthClientSecret`
+
+These are replaced with `REDACTED sha256(...)` in the diff output via
+`createRedaction()`. When the CF CLI's `config.json` schema changes
+(e.g., new fields added in `cloudfoundry/cli` `util/configv3/json_config.go`
+or `cf/configuration/coreconfig/config_data.go`), check whether any new
+fields contain tokens, secrets, passwords, or credentials and add them
+to the redaction list in `showDiff`.
+
 ## OS Abstraction
 
 The `OS` interface in `cf_targets.go` wraps filesystem operations for

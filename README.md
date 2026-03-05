@@ -212,3 +212,14 @@ gmake clean
 > functionality is now covered by the Makefile:
 > - Development builds: `make build`
 > - Release builds: `make ci-release VERSION=x.y.z`
+
+## Test Coverage
+
+| Package | Coverage |
+|---------|----------|
+| `cf-targets-plugin` | 72.6% |
+| `internal/diff` | 83.3% |
+| `internal/diff/lcs` | 54.3% |
+| **Total** | **68.1%** |
+
+Last updated: 2026-03-05
