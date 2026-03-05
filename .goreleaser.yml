@@ -1,0 +1,59 @@
+version: 2
+project_name: cf-targets-plugin
+
+before:
+  hooks:
+    - go mod tidy
+    - gofmt -l -e .
+    - go vet ./...
+    - go test -race ./...
+
+builds:
+  - main: .
+    binary: cf-targets-plugin
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X 'main.SemVerMajor={{ .Major }}'
+      - -X 'main.SemVerMinor={{ .Minor }}'
+      - -X 'main.SemVerPatch={{ .Patch }}'
+      - -X 'main.SemVerPrerelease={{ .Prerelease }}'
+      - -X 'main.SemVerBuild='
+      - -X 'main.BuildDate={{ .Date }}'
+      - -X 'main.BuildVcsUrl={{ .GitURL }}'
+      - -X 'main.BuildVcsId={{ .ShortCommit }}'
+      - -X 'main.BuildVcsIdDate={{ .CommitDate }}'
+      - -X 'main.GoOs={{ .Os }}'
+      - -X 'main.GoArch={{ .Arch }}'
+
+archives:
+  - formats: [binary]
+    name_template: >-
+      {{ .ProjectName }}-{{ .Version }}+{{ .Os }}.{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: cloudfoundry-community
+    name: cf-targets-plugin
+  draft: true
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

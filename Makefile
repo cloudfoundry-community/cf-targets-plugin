@@ -179,7 +179,7 @@ verify: tidy check test security ## Run all checks before commit
 
 ##@ Release
 
-.PHONY: ci-release release-all release-clean show-releases create-repo-index
+.PHONY: ci-release release-all release-clean show-releases create-repo-index goreleaser-release goreleaser-snapshot
 
 require-%:
 	@ if [ "${${*}}" = "" ]; then \
@@ -201,6 +201,12 @@ create-repo-index: $(RELEASE_ROOT)/repo-index.yml
 
 $(RELEASE_ROOT)/repo-index.yml: $(RELEASES) generate-repo-index
 	./generate-repo-index "$(RELEASE_ROOT)" "$(PROJECT)" "$(SEMVER_VERSION)" "$(BUILD_DATE)"
+
+goreleaser-release: require-VERSION ## Trigger GitHub Actions release workflow (requires VERSION=x.y.z)
+	gh workflow run release.yml -f tag=v$(VERSION)
+
+goreleaser-snapshot: ## Local GoReleaser dry run (no publish)
+	goreleaser release --snapshot --clean
 
 distbuild:
 	@mkdir -p $(RELEASE_ROOT)
