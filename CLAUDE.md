@@ -78,6 +78,16 @@ from `x/tools/internal/diff` directly remains the most appropriate approach.
 This avoids a dependency on an archived project and keeps the code aligned
 with the canonical upstream source.
 
+## GitHub CLI Setup
+
+This repo (`cloudfoundry-community/cf-targets-plugin`) is a fork. The `gh`
+CLI resolves forks to their parent repo by default, which causes `gh workflow
+run`, `gh release`, etc. to target the wrong repository. After cloning, run:
+
+```
+gh repo set-default cloudfoundry-community/cf-targets-plugin
+```
+
 ## Build and Test
 
 ```

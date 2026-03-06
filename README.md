@@ -91,13 +91,22 @@ Your current target has not been saved. Use save-target first, or use -f to disc
   
 ##### Install from Source (need to have [Go](http://golang.org/dl/) installed)
   ```
-  $ git clone ... 
+  $ git clone ...
   $ cd cf-targets-plugin
-  # 
+  #
   $ make build
   $ cf install-plugin cf-targets-plugin
-  or 
+  or
   $ make install
+  ```
+
+##### GitHub CLI setup
+
+This repo is a fork. The `gh` CLI defaults to the parent repo, which causes
+workflows and releases to target the wrong repository. After cloning, set
+the default:
+  ```
+  $ gh repo set-default cloudfoundry-community/cf-targets-plugin
   ```
 
 ## Full Command List
