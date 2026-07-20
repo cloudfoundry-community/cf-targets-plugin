@@ -3,6 +3,7 @@
 .ssh-remote
 *~
 /cf-targets-plugin
+/bin/
 /releases/**
 .DS_Store
 /cl.resume
