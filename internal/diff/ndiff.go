@@ -12,17 +12,13 @@ import (
 	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff/lcs"
 )
 
-// Lines computes the differences between two strings, line by line.
-// Each line is compared as an atomic unit using the LCS algorithm.
-// This is the recommended replacement for myers.ComputeEdits.
+// Lines computes differences between two strings. All edits are at line boundaries.
 func Lines(before, after string) []Edit {
-	if before == after {
-		return nil
-	}
-	beforeLines, bOffsets := splitLinesWithOffsets(before)
-	afterLines, _ := splitLinesWithOffsets(after)
+	beforeLines, bOffsets := splitLines(before)
+	afterLines, _ := splitLines(after)
 	diffs := lcs.DiffLines(beforeLines, afterLines)
 
+	// Convert from LCS diffs to Edits
 	res := make([]Edit, len(diffs))
 	for i, d := range diffs {
 		res[i] = Edit{
@@ -32,27 +28,6 @@ func Lines(before, after string) []Edit {
 		}
 	}
 	return res
-}
-
-// splitLinesWithOffsets splits text into lines (including trailing \n)
-// and returns both the lines and byte offsets of each line start,
-// plus a final offset equal to len(text).
-func splitLinesWithOffsets(text string) ([]string, []int) {
-	var lines []string
-	offsets := []int{0}
-	start := 0
-	for i, r := range text {
-		if r == '\n' {
-			lines = append(lines, text[start:i+1])
-			start = i + 1
-			offsets = append(offsets, start)
-		}
-	}
-	if start < len(text) {
-		lines = append(lines, text[start:])
-		offsets = append(offsets, len(text))
-	}
-	return lines, offsets
 }
 
 // Strings computes the differences between two strings.
