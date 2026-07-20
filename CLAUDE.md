@@ -110,10 +110,25 @@ displaying unified diffs. Currently redacted fields:
 
 These are replaced with `REDACTED sha256(...)` in the diff output via
 `createRedaction()`. When the CF CLI's `config.json` schema changes
-(e.g., new fields added in `cloudfoundry/cli` `util/configv3/json_config.go`
-or `cf/configuration/coreconfig/config_data.go`), check whether any new
-fields contain tokens, secrets, passwords, or credentials and add them
-to the redaction list in `showDiff`.
+(e.g., new fields added in `cloudfoundry/cli` `util/configv3/json_config.go`),
+check whether any new fields contain tokens, secrets, passwords, or
+credentials and add them to the redaction list in `showDiff`.
+
+## CF CLI Config Schema
+
+The plugin reads and compares `config.json` using the CF 8 schema,
+`code.cloudfoundry.org/cli/v8/util/configv3.JSONConfig`. It deliberately does
+**not** use `cf/configuration/coreconfig`, the CF 6 schema: that struct has no
+`CFOnK8s` field and types `AsyncTimeout` as `uint` rather than `int`, so
+round-tripping a CF 8 config through it silently dropped the CF-on-Kubernetes
+settings and made `checkStatus` report a modified target as already saved.
+
+`configv3.LoadConfig()` is not usable here — it only reads the default config
+path and also pulls in environment, plugin, and TTY state. `loadConfig` in
+`cf_targets.go` unmarshals `JSONConfig` directly so it can read arbitrary
+saved target files, and mirrors the two rules `LoadConfig` applies: an empty
+file, or one whose `ConfigVersion` differs from `configv3.CurrentConfigVersion`,
+is treated as an empty config.
 
 ## OS Abstraction
 

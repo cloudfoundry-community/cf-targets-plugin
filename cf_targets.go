@@ -14,10 +14,8 @@ import (
 
 	realos "os"
 
-	"code.cloudfoundry.org/cli/cf/configuration"
-	"code.cloudfoundry.org/cli/cf/configuration/confighelpers"
-	"code.cloudfoundry.org/cli/cf/configuration/coreconfig"
-	"code.cloudfoundry.org/cli/plugin"
+	"code.cloudfoundry.org/cli/v8/plugin"
+	"code.cloudfoundry.org/cli/v8/util/configv3"
 	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff"
 )
 
@@ -52,6 +50,7 @@ type OS interface {
 	ReadFile(string) ([]byte, error)
 	WriteFile(string, []byte, realos.FileMode) error
 	ReadLine() (string, error)
+	Stat(string) (realos.FileInfo, error)
 }
 
 func (*RealOS) Exit(code int)                                  { realos.Exit(code) }
@@ -60,6 +59,7 @@ func (*RealOS) Remove(path string) error                       { return realos.R
 func (*RealOS) Symlink(target string, source string) error     { return realos.Symlink(target, source) }
 func (*RealOS) ReadDir(path string) ([]realos.DirEntry, error) { return realos.ReadDir(path) }
 func (*RealOS) ReadFile(path string) ([]byte, error)           { return realos.ReadFile(path) }
+func (*RealOS) Stat(path string) (realos.FileInfo, error)      { return realos.Stat(path) }
 func (*RealOS) WriteFile(path string, content []byte, mode realos.FileMode) error {
 	return realos.WriteFile(path, content, mode)
 }
@@ -95,7 +95,7 @@ func getVersion(version, toInt string) int {
 }
 
 func newTargetsPlugin() *TargetsPlugin {
-	configPath, _ := confighelpers.DefaultFilePath()
+	configPath := configv3.ConfigFilePath()
 	targetsPath := filepath.Join(filepath.Dir(configPath), "targets")
 	_ = os.Mkdir(targetsPath, 0700) // ignore error; directory may already exist
 	return &TargetsPlugin{
@@ -240,15 +240,16 @@ func (c *TargetsPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 	}()
 
 	c.checkStatus()
-	if args[0] == "targets" {
+	switch args[0] {
+	case "targets":
 		c.TargetsCommand(args)
-	} else if args[0] == "set-target" {
+	case "set-target":
 		c.SetTargetCommand(args)
-	} else if args[0] == "save-target" {
+	case "save-target":
 		c.SaveTargetCommand(args)
-	} else if args[0] == "delete-target" {
+	case "delete-target":
 		c.DeleteTargetCommand(args)
-	} else if args[0] == "switch-target" {
+	case "switch-target":
 		c.SwitchTargetCommand(args)
 	}
 }
@@ -476,9 +477,39 @@ func (c *TargetsPlugin) getTargets() []string {
 	return targets
 }
 
+func (c *TargetsPlugin) fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (c *TargetsPlugin) targetExists(targetPath string) bool {
-	target := configuration.NewDiskPersistor(targetPath)
-	return target.Exists()
+	return c.fileExists(targetPath)
+}
+
+// loadConfig decodes a CF CLI config file using the CF 8 (configv3) schema.
+// A file that is empty, or whose ConfigVersion predates the one this CLI
+// writes, is reported as an empty config rather than partially-understood
+// data — the same rule configv3.LoadConfig applies.
+func (c *TargetsPlugin) loadConfig(path string) *configv3.JSONConfig {
+	config := &configv3.JSONConfig{}
+	content, err := os.ReadFile(path)
+	c.checkError(err)
+	if len(bytes.TrimSpace(content)) == 0 {
+		return config
+	}
+	err = json.Unmarshal(content, config)
+	c.checkError(err)
+	if config.ConfigVersion != configv3.CurrentConfigVersion {
+		return &configv3.JSONConfig{}
+	}
+	return config
+}
+
+// marshalConfig renders a config in the same form the CF CLI writes it, so
+// two configs compare equal only when the CLI would consider them identical.
+func marshalConfig(config *configv3.JSONConfig) ([]byte, error) {
+	config.ConfigVersion = configv3.CurrentConfigVersion
+	return json.MarshalIndent(config, "", "  ")
 }
 
 /*
@@ -489,9 +520,7 @@ func (c *TargetsPlugin) targetExists(targetPath string) bool {
 */
 
 func (c *TargetsPlugin) checkStatus() {
-	currentConfig := configuration.NewDiskPersistor(c.configPath)
-	currentTarget := configuration.NewDiskPersistor(c.currentPath)
-	if !currentTarget.Exists() {
+	if !c.fileExists(c.currentPath) {
 		_ = os.Remove(c.currentPath) // best-effort cleanup of stale symlink
 		c.status = TargetStatus{false, "", false, false}
 		return
@@ -499,21 +528,16 @@ func (c *TargetsPlugin) checkStatus() {
 
 	name := c.getCurrent()
 
-	configData := coreconfig.NewData()
-	targetData := coreconfig.NewData()
-
-	err := currentConfig.Load(configData)
-	c.checkError(err)
-	err = currentTarget.Load(targetData)
-	c.checkError(err)
+	configData := c.loadConfig(c.configPath)
+	targetData := c.loadConfig(c.currentPath)
 
 	// Ignore the access-token field, as it changes frequently
 	needsUpdate := targetData.AccessToken != configData.AccessToken
 	targetData.AccessToken = configData.AccessToken
 
-	currentContent, err := configData.JSONMarshalV3()
+	currentContent, err := marshalConfig(configData)
 	c.checkError(err)
-	savedContent, err := targetData.JSONMarshalV3()
+	savedContent, err := marshalConfig(targetData)
 	c.checkError(err)
 	c.status = TargetStatus{true, name, !bytes.Equal(currentContent, savedContent), needsUpdate}
 }

@@ -6,9 +6,10 @@ import (
 	realos "os"
 	"path/filepath"
 
-	. "code.cloudfoundry.org/cli/cf/util/testhelpers/io"
-	. "code.cloudfoundry.org/cli/cf/util/testhelpers/matchers"
-	fakes "code.cloudfoundry.org/cli/plugin/pluginfakes"
+	. "code.cloudfoundry.org/cli/v8/cf/util/testhelpers/io"
+	. "code.cloudfoundry.org/cli/v8/cf/util/testhelpers/matchers"
+	fakes "code.cloudfoundry.org/cli/v8/plugin/pluginfakes"
+	"code.cloudfoundry.org/cli/v8/util/configv3"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -39,6 +40,8 @@ type FakeOS struct {
 	readlineShouldReturn       string
 	readlineShouldReturnError  error
 	readfileShouldReturnMap    map[string][]byte
+	statCalled                 int
+	statCalledWithPath         string
 }
 
 func (os *FakeOS) Exit(code int) {
@@ -94,6 +97,14 @@ func (os *FakeOS) WriteFile(path string, content []byte, mode realos.FileMode) e
 func (os *FakeOS) ReadLine() (string, error) {
 	os.readlineCalled++
 	return os.readlineShouldReturn, os.readlineShouldReturnError
+}
+
+// Stat consults the real filesystem; the suite creates genuine target files in
+// a temp directory to exercise existence checks.
+func (os *FakeOS) Stat(path string) (realos.FileInfo, error) {
+	os.statCalled++
+	os.statCalledWithPath = path
+	return realos.Stat(path)
 }
 
 var _ = Describe("TargetsPlugin", func() {
@@ -204,7 +215,7 @@ var _ = Describe("TargetsPlugin", func() {
 		})
 
 		AfterEach(func() {
-			realos.RemoveAll(tmpDir)
+			_ = realos.RemoveAll(tmpDir)
 		})
 
 		It("deletes an existing target", func() {
@@ -464,6 +475,122 @@ var _ = Describe("TargetsPlugin", func() {
 		})
 	})
 
+	Describe("CF 8 config schema", func() {
+		var tmpDir string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = realos.MkdirTemp("", "cf-targets-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			targetsPlugin.targetsPath = tmpDir
+			targetsPlugin.currentPath = filepath.Join(tmpDir, "current")
+		})
+
+		AfterEach(func() {
+			_ = realos.RemoveAll(tmpDir)
+		})
+
+		cfConfig := func(overrides map[string]interface{}) []byte {
+			base := map[string]interface{}{
+				"ConfigVersion": configv3.CurrentConfigVersion,
+				"Target":        "https://api.example.com",
+				"AccessToken":   "token-abc",
+			}
+			for k, v := range overrides {
+				base[k] = v
+			}
+			data, err := json.Marshal(base)
+			Expect(err).NotTo(HaveOccurred())
+			return data
+		}
+
+		// Point the "current" symlink at a real saved target so getCurrent can
+		// resolve the target's name from it.
+		linkCurrentTo := func(name string) {
+			targetFile := filepath.Join(tmpDir, name+targetsPlugin.suffix)
+			Expect(realos.WriteFile(targetFile, []byte("{}"), 0600)).To(Succeed())
+			Expect(realos.Symlink(targetFile, targetsPlugin.currentPath)).To(Succeed())
+		}
+
+		It("detects a change confined to the CF-on-Kubernetes block", func() {
+			linkCurrentTo("k8s")
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: cfConfig(map[string]interface{}{
+					"CFOnK8s": map[string]interface{}{"Enabled": true, "AuthInfo": "alice"},
+				}),
+				targetsPlugin.currentPath: cfConfig(map[string]interface{}{
+					"CFOnK8s": map[string]interface{}{"Enabled": true, "AuthInfo": "bob"},
+				}),
+			}
+
+			targetsPlugin.checkStatus()
+
+			Expect(targetsPlugin.status.currentHasName).To(BeTrue())
+			Expect(targetsPlugin.status.currentName).To(Equal("k8s"))
+			// The CF 6 schema had no CFOnK8s field, so it dropped this
+			// difference and wrongly reported the target as already saved.
+			Expect(targetsPlugin.status.currentNeedsSaving).To(BeTrue())
+		})
+
+		It("reports no change when identical configs carry a CF-on-Kubernetes block", func() {
+			linkCurrentTo("k8s")
+			same := cfConfig(map[string]interface{}{
+				"CFOnK8s": map[string]interface{}{"Enabled": true, "AuthInfo": "alice"},
+			})
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath:  same,
+				targetsPlugin.currentPath: same,
+			}
+
+			targetsPlugin.checkStatus()
+
+			Expect(targetsPlugin.status.currentNeedsSaving).To(BeFalse())
+		})
+
+		It("preserves every CF 8 field through a load and marshal round trip", func() {
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: cfConfig(map[string]interface{}{
+					"CFOnK8s":      map[string]interface{}{"Enabled": true, "AuthInfo": "alice"},
+					"AsyncTimeout": 42,
+					"UAAGrantType": "client_credentials",
+				}),
+			}
+
+			config := targetsPlugin.loadConfig(targetsPlugin.configPath)
+
+			Expect(config.CFOnK8s.Enabled).To(BeTrue())
+			Expect(config.CFOnK8s.AuthInfo).To(Equal("alice"))
+			Expect(config.AsyncTimeout).To(Equal(42))
+			Expect(config.UAAGrantType).To(Equal("client_credentials"))
+
+			round, err := marshalConfig(config)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(round)).To(ContainSubstring(`"AuthInfo": "alice"`))
+			Expect(string(round)).To(ContainSubstring(`"AsyncTimeout": 42`))
+		})
+
+		It("treats a config from an older CLI version as empty", func() {
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: []byte(`{"ConfigVersion": 1, "Target": "https://old.example.com"}`),
+			}
+
+			config := targetsPlugin.loadConfig(targetsPlugin.configPath)
+
+			Expect(config.Target).To(BeEmpty())
+		})
+
+		It("treats an empty config file as empty rather than failing", func() {
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: []byte("  \n"),
+			}
+
+			config := targetsPlugin.loadConfig(targetsPlugin.configPath)
+
+			Expect(config.Target).To(BeEmpty())
+			Expect(fakeOS.exitCalled).To(Equal(0))
+		})
+	})
+
 	Describe("createBuildMeta", func() {
 		It("returns os.arch when no build metadata", func() {
 			Expect(createBuildMeta("darwin", "arm64", "")).To(Equal("darwin.arm64"))
@@ -546,7 +673,7 @@ var _ = Describe("TargetsPlugin", func() {
 			targetJSON := makeJSON(map[string]interface{}{"ColorEnabled": "false"})
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:             currentJSON,
+				targetsPlugin.currentPath:         currentJSON,
 				targetsPlugin.targetPath("other"): targetJSON,
 			}
 
@@ -563,7 +690,7 @@ var _ = Describe("TargetsPlugin", func() {
 			jsonData := makeJSON(nil)
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:             jsonData,
+				targetsPlugin.currentPath:        jsonData,
 				targetsPlugin.targetPath("same"): jsonData,
 			}
 
@@ -584,7 +711,7 @@ var _ = Describe("TargetsPlugin", func() {
 			})
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:                currentJSON,
+				targetsPlugin.currentPath:            currentJSON,
 				targetsPlugin.targetPath("redacted"): targetJSON,
 			}
 
@@ -608,7 +735,7 @@ var _ = Describe("TargetsPlugin", func() {
 			otherJSON := []byte(`{"Target": "https://api.example.com", "ColorEnabled": "false"}`)
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:                minimalJSON,
+				targetsPlugin.currentPath:           minimalJSON,
 				targetsPlugin.targetPath("minimal"): otherJSON,
 			}
 
