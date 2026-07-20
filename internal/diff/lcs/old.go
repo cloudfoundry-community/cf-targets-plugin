@@ -188,6 +188,8 @@ func (e *editGraph) getForward(d, k int) int {
 // --- BACKWARD ---
 
 // bdone decides if the backward path has reached the lower left corner
+//
+//nolint:unused // vendored from x/tools; kept to match upstream
 func (e *editGraph) bdone(D, k int) (bool, lcs) {
 	// x, y, k are relative to the rectangle
 	x := e.vb.get(D, k)
@@ -200,6 +202,8 @@ func (e *editGraph) bdone(D, k int) (bool, lcs) {
 
 // run the backward algorithm, until success or up to the limit on D.
 // (used only by tests)
+//
+//nolint:unused // vendored from x/tools; kept to match upstream
 func backward(e *editGraph) lcs {
 	e.setBackward(0, 0, e.ux)
 	if ok, ans := e.bdone(0, 0); ok {

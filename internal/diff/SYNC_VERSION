@@ -30,5 +30,11 @@ synced-on: 2026-07
 # May 2025 and the lcs.DiffStrings/stringSeqs code upstream removed in November
 # 2025, and three of them matched no upstream tag at all because they had been
 # hand-modified locally. The 2026-07 sync replaced all nine tracked files with
-# verbatim v0.48.0 content, so the only remaining local change is the import
-# path rewrite in ndiff.go.
+# verbatim v0.48.0 content.
+#
+# Local modifications to the synced files, which must be re-applied after any
+# future sync (no executable code is changed by any of them):
+#
+#   ndiff.go     import path rewritten to this module's internal/diff/lcs
+#   diff.go      //nolint:staticcheck above the bounds check (QF1001)
+#   lcs/old.go   //nolint:unused above bdone and backward

@@ -62,6 +62,24 @@ and reports whether any tracked files have changed. Exit code 0 means in sync,
 5. Update `internal/diff/SYNC_VERSION` to the new tag.
 6. Run `go test ./internal/diff/...` to verify after any sync.
 
+### Local modifications — re-apply after every sync
+
+Syncing replaces the tracked files wholesale, which silently drops the small
+set of local changes listed in `internal/diff/SYNC_VERSION`. After any sync,
+re-apply them and confirm with `make check`:
+
+| File | Change |
+|------|--------|
+| `ndiff.go` | Import path rewritten to this module's `internal/diff/lcs` |
+| `diff.go` | `//nolint:staticcheck` above the bounds check (QF1001) |
+| `lcs/old.go` | `//nolint:unused` above `bdone` and `backward` |
+
+The `nolint` directives are deliberately inline rather than a repository-wide
+lint exclusion, so the suppression sits on the exact line it applies to and a
+new finding elsewhere in the vendored tree is still reported. These are
+upstream's findings, not this project's — fix them upstream, not here. None of
+the local changes alter executable code.
+
 ### Why not use a third-party diff package?
 
 The following alternatives were evaluated:
