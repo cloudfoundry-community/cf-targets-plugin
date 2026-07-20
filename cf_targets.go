@@ -14,6 +14,8 @@ import (
 
 	realos "os"
 
+	_ "embed"
+
 	"code.cloudfoundry.org/cli/v8/plugin"
 	"code.cloudfoundry.org/cli/v8/util/configv3"
 	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff"
@@ -71,6 +73,15 @@ func (*RealOS) ReadLine() (string, error) {
 	}
 	return strings.TrimRight(line, "\r\n"), nil
 }
+
+// diffLicense is the licence covering internal/diff, embedded so that the
+// notice this binary prints is the licence file itself rather than a copy that
+// can fall out of step with it. The BSD-3 terms require binary distributions to
+// reproduce the copyright notice, the conditions and the disclaimer, so this
+// must be printed in full.
+//
+//go:embed internal/diff/LICENSE
+var diffLicense string
 
 var os OS
 var SemVerMajor string
@@ -210,20 +221,8 @@ func main() {
 		fmt.Printf(f, "VCS Id:", BuildVcsId)
 		fmt.Printf(f, "VCS Id Date:", BuildVcsIdDate)
 
-		fmt.Printf("\nCopyright 2009 The Go Authors.   (diff directory tree only)\n\n")
-
-		fmt.Printf("Redistribution and use in source and binary forms, with or without\n")
-		fmt.Printf("modification, are permitted provided that the following conditions are met:\n\n")
-
-		fmt.Printf("   * Redistributions of source code must retain the above copyright\n")
-		fmt.Printf("     notice, this list of conditions and the following disclaimer.\n")
-		fmt.Printf("   * Redistributions in binary form must reproduce the above\n")
-		fmt.Printf("     copyright notice, this list of conditions and the following disclaimer\n")
-		fmt.Printf("     in the documentation and/or other materials provided with the\n")
-		fmt.Printf("     distribution.\n")
-		fmt.Printf("   * Neither the name of Google LLC nor the names of its\n")
-		fmt.Printf("     contributors may be used to endorse or promote products derived from\n")
-		fmt.Printf("     this software without specific prior written permission.\n")
+		fmt.Printf("\nThe following applies to the diff directory tree only:\n\n")
+		fmt.Print(diffLicense)
 	}
 	os = &RealOS{}
 	plugin.Start(newTargetsPlugin())

@@ -591,6 +591,27 @@ var _ = Describe("TargetsPlugin", func() {
 		})
 	})
 
+	Describe("embedded diff licence", func() {
+		// The BSD-3 binary clause requires distributed binaries to reproduce the
+		// copyright notice, the conditions and the disclaimer. The notice is
+		// embedded from internal/diff/LICENSE rather than copied, so these
+		// assertions guard the licence file itself against being truncated.
+		It("carries the copyright notice", func() {
+			Expect(diffLicense).To(ContainSubstring("Copyright 2009 The Go Authors."))
+		})
+
+		It("carries all three redistribution conditions", func() {
+			Expect(diffLicense).To(ContainSubstring("Redistributions of source code must retain"))
+			Expect(diffLicense).To(ContainSubstring("Redistributions in binary form must reproduce"))
+			Expect(diffLicense).To(ContainSubstring("Neither the name of Google LLC"))
+		})
+
+		It("carries the warranty disclaimer in full", func() {
+			Expect(diffLicense).To(ContainSubstring("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS"))
+			Expect(diffLicense).To(ContainSubstring("EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."))
+		})
+	})
+
 	Describe("createBuildMeta", func() {
 		It("returns os.arch when no build metadata", func() {
 			Expect(createBuildMeta("darwin", "arm64", "")).To(Equal("darwin.arm64"))
