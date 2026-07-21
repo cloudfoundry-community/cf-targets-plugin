@@ -375,6 +375,98 @@ var _ = Describe("TargetsPlugin", func() {
 			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
 		})
 
+		It("saves under --save-as and warns when it differs on a named target", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			// showDiff needs parseable content for the named path.
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath: []byte(`{"ConfigVersion":4,"ColorEnabled":"true"}`),
+				targetsPlugin.configPath:  []byte(`{"ConfigVersion":4,"ColorEnabled":"false"}`),
+			}
+
+			// Current target is named "origin" and has unsaved changes.
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "newname", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(2)) // save as newname + switch
+			// --save-as is honoured: the save uses the new name.
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "newname"}))
+			// ...and the user is warned it differs from the current name.
+			Expect(output).To(ContainSubstrings([]string{"Warning", "origin", "newname"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("Saved current target as origin"))
+			}
+		})
+
+		It("does not warn when --save-as matches the existing name", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath: []byte(`{"ConfigVersion":4,"ColorEnabled":"true"}`),
+				targetsPlugin.configPath:  []byte(`{"ConfigVersion":4,"ColorEnabled":"false"}`),
+			}
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "origin", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "origin"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("current target is named"))
+			}
+		})
+
+		It("notes --save-as is ignored when there are no unsaved changes", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Named current target with nothing to save.
+			targetsPlugin.status = TargetStatus{true, "origin", false, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "newname", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // switch only, nothing saved
+			Expect(output).To(ContainSubstrings([]string{"--save-as", "newname", "ignored"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("Saved current target as"))
+			}
+		})
+
+		It("ignores --save-as under -f but states it", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "-f", "--save-as", "newname", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // switch only, nothing saved
+			Expect(output).To(ContainSubstrings([]string{"--save-as", "newname", "ignored"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("Saved current target as"))
+			}
+		})
+
 		It("saves unnamed target with --save-as before switching", func() {
 			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
 			err := realos.WriteFile(targetFile, []byte("{}"), 0600)

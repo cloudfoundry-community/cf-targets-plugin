@@ -166,7 +166,7 @@ func (c *TargetsPlugin) GetMetadata() plugin.PluginMetadata {
 				UsageDetails: plugin.Usage{
 					Usage: "cf switch-target [-f] [--save-as NAME] TARGET",
 					Options: map[string]string{
-						"f":       "discard unsaved changes to the current target",
+						"f":       "switch even if the current target has unsaved changes",
 						"save-as": "save the current (unnamed) target as NAME before switching",
 					},
 				},
@@ -429,34 +429,49 @@ func (c *TargetsPlugin) SwitchTargetCommand(args []string) {
 		panic(1)
 	}
 
-	if !*force && c.status.currentNeedsSaving {
-		if c.status.currentHasName {
-			// Show what changed before auto-saving
-			c.showDiff(c.configPath)
-			// Auto-save the named current target
-			savePath := c.targetPath(c.status.currentName)
-			c.copyContents(c.configPath, savePath)
-			fmt.Println("Saved current target as", c.status.currentName)
-		} else {
-			// Unnamed target — need a name
-			name := *saveAs
-			if name == "" {
-				fmt.Print("Save current target as: ")
-				name, err = os.ReadLine()
-				if err != nil {
-					fmt.Println("Error:", err)
-					panic(1)
-				}
+	if *force {
+		// -f switches regardless of unsaved changes and saves nothing. If
+		// --save-as was also given it cannot apply, so say so rather than
+		// dropping it silently.
+		if *saveAs != "" {
+			fmt.Println("Note: --save-as", *saveAs, "ignored; -f switches without saving the current target.")
+		}
+	} else if c.status.currentNeedsSaving {
+		var name string
+		switch {
+		case *saveAs != "":
+			// --save-as names the save. The current target keeps its own saved
+			// copy, so warn when the new name differs from the current one.
+			name = *saveAs
+			if c.status.currentHasName && *saveAs != c.status.currentName {
+				fmt.Println("Warning: current target is named", c.status.currentName+"; saving as", *saveAs, "instead of", c.status.currentName)
+			}
+		case c.status.currentHasName:
+			// No --save-as: a named current target is saved under its own name.
+			name = c.status.currentName
+		default:
+			// Unnamed current target and no --save-as: ask for a name.
+			fmt.Print("Save current target as: ")
+			name, err = os.ReadLine()
+			if err != nil {
+				fmt.Println("Error:", err)
+				panic(1)
 			}
 			if name == "" {
 				fmt.Println("No name provided. Use -f to discard changes or --save-as to provide a name.")
 				panic(1)
 			}
-			savePath := c.targetPath(name)
-			c.copyContents(c.configPath, savePath)
-			c.linkCurrent(savePath)
-			fmt.Println("Saved current target as", name)
 		}
+		if c.status.currentHasName {
+			// Show what changed since the current target was last saved.
+			c.showDiff(c.configPath)
+		}
+		c.copyContents(c.configPath, c.targetPath(name))
+		fmt.Println("Saved current target as", name)
+	} else if *saveAs != "" {
+		// Nothing to save, so --save-as has no effect; say so rather than
+		// dropping it silently.
+		fmt.Println("Note: --save-as", *saveAs, "ignored; the current target has no unsaved changes to save.")
 	}
 
 	c.copyContents(targetPath, c.configPath)
