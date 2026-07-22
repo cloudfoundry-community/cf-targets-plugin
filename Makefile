@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
 PROJECT        :=cf-targets-plugin
+REPO_SLUG      ?=cloudfoundry-community/cf-targets-plugin
 GOOS           :=$(shell go env GOOS)
 GOARCH         :=$(shell go env GOARCH)
 GOMODULECMD    :=main
@@ -200,7 +201,7 @@ release-all: release-clean distbuild $(RELEASES) create-repo-index show-releases
 create-repo-index: $(RELEASE_ROOT)/repo-index.yml
 
 $(RELEASE_ROOT)/repo-index.yml: $(RELEASES) generate-repo-index
-	./generate-repo-index "$(RELEASE_ROOT)" "$(PROJECT)" "$(SEMVER_VERSION)" "$(BUILD_DATE)"
+	./generate-repo-index "$(RELEASE_ROOT)" "$(PROJECT)" "$(SEMVER_VERSION)" "$(BUILD_DATE)" "$(REPO_SLUG)"
 
 goreleaser-release: require-VERSION ## Trigger GitHub Actions release workflow (requires VERSION=x.y.z)
 	gh workflow run release.yml -f tag=v$(VERSION)
