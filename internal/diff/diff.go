@@ -73,6 +73,7 @@ func validate(src string, edits []Edit) ([]Edit, int, error) {
 	size := len(src)
 	lastEnd := 0
 	for _, edit := range edits {
+		//nolint:staticcheck // vendored from x/tools; simplify upstream, not here
 		if !(0 <= edit.Start && edit.Start <= edit.End && edit.End <= len(src)) {
 			return nil, 0, fmt.Errorf("diff has out-of-bounds edits")
 		}

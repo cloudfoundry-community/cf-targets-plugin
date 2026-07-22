@@ -8,32 +8,10 @@ import (
 	"testing"
 )
 
-func TestDiffStringsIdentical(t *testing.T) {
-	diffs := DiffStrings("hello", "hello")
-	if len(diffs) != 0 {
-		t.Errorf("DiffStrings() for identical = %v, want empty", diffs)
-	}
-}
-
-func TestDiffStringsSimple(t *testing.T) {
-	diffs := DiffStrings("abc", "aXc")
+func TestDiffBytesCompleteDifference(t *testing.T) {
+	diffs := DiffBytes([]byte("abc"), []byte("xyz"))
 	if len(diffs) == 0 {
-		t.Fatal("DiffStrings() returned no diffs")
-	}
-	// The diff should replace 'b' (offset 1-2) with 'X' (offset 1-2)
-	d := diffs[0]
-	if d.Start != 1 || d.End != 2 {
-		t.Errorf("DiffStrings() deletion range = [%d,%d), want [1,2)", d.Start, d.End)
-	}
-	if d.ReplStart != 1 || d.ReplEnd != 2 {
-		t.Errorf("DiffStrings() replacement range = [%d,%d), want [1,2)", d.ReplStart, d.ReplEnd)
-	}
-}
-
-func TestDiffStringsCompleteDifference(t *testing.T) {
-	diffs := DiffStrings("abc", "xyz")
-	if len(diffs) == 0 {
-		t.Fatal("DiffStrings() returned no diffs for completely different strings")
+		t.Fatal("DiffBytes() returned no diffs for completely different input")
 	}
 }
 
@@ -52,6 +30,9 @@ func TestDiffBytesSimple(t *testing.T) {
 	d := diffs[0]
 	if d.Start != 1 || d.End != 3 {
 		t.Errorf("DiffBytes() deletion range = [%d,%d), want [1,3)", d.Start, d.End)
+	}
+	if d.ReplStart != 1 || d.ReplEnd != 3 {
+		t.Errorf("DiffBytes() replacement range = [%d,%d), want [1,3)", d.ReplStart, d.ReplEnd)
 	}
 }
 
@@ -110,7 +91,7 @@ func TestDiffLinesDelete(t *testing.T) {
 	}
 }
 
-func TestDiffStringsEmpty(t *testing.T) {
+func TestDiffBytesEmpty(t *testing.T) {
 	tests := []struct {
 		name string
 		a, b string
@@ -121,10 +102,8 @@ func TestDiffStringsEmpty(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			diffs := DiffStrings(tt.a, tt.b)
-			// Apply the diffs to verify correctness
-			result := tt.a
-			// Reconstruct from diffs
+			diffs := DiffBytes([]byte(tt.a), []byte(tt.b))
+			// Reconstruct b from a by applying the diffs, to verify correctness.
 			var out []byte
 			pos := 0
 			for _, d := range diffs {
@@ -133,8 +112,7 @@ func TestDiffStringsEmpty(t *testing.T) {
 				pos = d.End
 			}
 			out = append(out, tt.a[pos:]...)
-			result = string(out)
-			if result != tt.b {
+			if result := string(out); result != tt.b {
 				t.Errorf("applying diffs: got %q, want %q", result, tt.b)
 			}
 		})

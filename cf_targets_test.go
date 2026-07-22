@@ -6,9 +6,10 @@ import (
 	realos "os"
 	"path/filepath"
 
-	. "code.cloudfoundry.org/cli/cf/util/testhelpers/io"
-	. "code.cloudfoundry.org/cli/cf/util/testhelpers/matchers"
-	fakes "code.cloudfoundry.org/cli/plugin/pluginfakes"
+	. "code.cloudfoundry.org/cli/v8/cf/util/testhelpers/io"
+	. "code.cloudfoundry.org/cli/v8/cf/util/testhelpers/matchers"
+	fakes "code.cloudfoundry.org/cli/v8/plugin/pluginfakes"
+	"code.cloudfoundry.org/cli/v8/util/configv3"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -39,6 +40,8 @@ type FakeOS struct {
 	readlineShouldReturn       string
 	readlineShouldReturnError  error
 	readfileShouldReturnMap    map[string][]byte
+	statCalled                 int
+	statCalledWithPath         string
 }
 
 func (os *FakeOS) Exit(code int) {
@@ -94,6 +97,14 @@ func (os *FakeOS) WriteFile(path string, content []byte, mode realos.FileMode) e
 func (os *FakeOS) ReadLine() (string, error) {
 	os.readlineCalled++
 	return os.readlineShouldReturn, os.readlineShouldReturnError
+}
+
+// Stat consults the real filesystem; the suite creates genuine target files in
+// a temp directory to exercise existence checks.
+func (os *FakeOS) Stat(path string) (realos.FileInfo, error) {
+	os.statCalled++
+	os.statCalledWithPath = path
+	return realos.Stat(path)
 }
 
 var _ = Describe("TargetsPlugin", func() {
@@ -204,7 +215,7 @@ var _ = Describe("TargetsPlugin", func() {
 		})
 
 		AfterEach(func() {
-			realos.RemoveAll(tmpDir)
+			_ = realos.RemoveAll(tmpDir)
 		})
 
 		It("deletes an existing target", func() {
@@ -364,6 +375,98 @@ var _ = Describe("TargetsPlugin", func() {
 			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
 		})
 
+		It("saves under --save-as and warns when it differs on a named target", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			// showDiff needs parseable content for the named path.
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath: []byte(`{"ConfigVersion":4,"ColorEnabled":"true"}`),
+				targetsPlugin.configPath:  []byte(`{"ConfigVersion":4,"ColorEnabled":"false"}`),
+			}
+
+			// Current target is named "origin" and has unsaved changes.
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "newname", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(2)) // save as newname + switch
+			// --save-as is honoured: the save uses the new name.
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "newname"}))
+			// ...and the user is warned it differs from the current name.
+			Expect(output).To(ContainSubstrings([]string{"Warning", "origin", "newname"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("Saved current target as origin"))
+			}
+		})
+
+		It("does not warn when --save-as matches the existing name", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.currentPath: []byte(`{"ConfigVersion":4,"ColorEnabled":"true"}`),
+				targetsPlugin.configPath:  []byte(`{"ConfigVersion":4,"ColorEnabled":"false"}`),
+			}
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "origin", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(output).To(ContainSubstrings([]string{"Saved current target as", "origin"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("current target is named"))
+			}
+		})
+
+		It("notes --save-as is ignored when there are no unsaved changes", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Named current target with nothing to save.
+			targetsPlugin.status = TargetStatus{true, "origin", false, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "--save-as", "newname", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // switch only, nothing saved
+			Expect(output).To(ContainSubstrings([]string{"--save-as", "newname", "ignored"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("Saved current target as"))
+			}
+		})
+
+		It("ignores --save-as under -f but states it", func() {
+			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
+			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetsPlugin.status = TargetStatus{true, "origin", true, false}
+
+			output := CaptureOutput(func() {
+				targetsPlugin.SwitchTargetCommand([]string{"switch-target", "-f", "--save-as", "newname", "dest"})
+			})
+
+			Expect(fakeOS.exitCalled).To(Equal(0))
+			Expect(fakeOS.writefileCalled).To(Equal(1)) // switch only, nothing saved
+			Expect(output).To(ContainSubstrings([]string{"--save-as", "newname", "ignored"}))
+			Expect(output).To(ContainSubstrings([]string{"Set target to", "dest"}))
+			for _, line := range output {
+				Expect(line).NotTo(ContainSubstring("Saved current target as"))
+			}
+		})
+
 		It("saves unnamed target with --save-as before switching", func() {
 			targetFile := filepath.Join(tmpDir, "dest"+targetsPlugin.suffix)
 			err := realos.WriteFile(targetFile, []byte("{}"), 0600)
@@ -464,6 +567,143 @@ var _ = Describe("TargetsPlugin", func() {
 		})
 	})
 
+	Describe("CF 8 config schema", func() {
+		var tmpDir string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = realos.MkdirTemp("", "cf-targets-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			targetsPlugin.targetsPath = tmpDir
+			targetsPlugin.currentPath = filepath.Join(tmpDir, "current")
+		})
+
+		AfterEach(func() {
+			_ = realos.RemoveAll(tmpDir)
+		})
+
+		cfConfig := func(overrides map[string]interface{}) []byte {
+			base := map[string]interface{}{
+				"ConfigVersion": configv3.CurrentConfigVersion,
+				"Target":        "https://api.example.com",
+				"AccessToken":   "token-abc",
+			}
+			for k, v := range overrides {
+				base[k] = v
+			}
+			data, err := json.Marshal(base)
+			Expect(err).NotTo(HaveOccurred())
+			return data
+		}
+
+		// Point the "current" symlink at a real saved target so getCurrent can
+		// resolve the target's name from it.
+		linkCurrentTo := func(name string) {
+			targetFile := filepath.Join(tmpDir, name+targetsPlugin.suffix)
+			Expect(realos.WriteFile(targetFile, []byte("{}"), 0600)).To(Succeed())
+			Expect(realos.Symlink(targetFile, targetsPlugin.currentPath)).To(Succeed())
+		}
+
+		It("detects a change confined to the CF-on-Kubernetes block", func() {
+			linkCurrentTo("k8s")
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: cfConfig(map[string]interface{}{
+					"CFOnK8s": map[string]interface{}{"Enabled": true, "AuthInfo": "alice"},
+				}),
+				targetsPlugin.currentPath: cfConfig(map[string]interface{}{
+					"CFOnK8s": map[string]interface{}{"Enabled": true, "AuthInfo": "bob"},
+				}),
+			}
+
+			targetsPlugin.checkStatus()
+
+			Expect(targetsPlugin.status.currentHasName).To(BeTrue())
+			Expect(targetsPlugin.status.currentName).To(Equal("k8s"))
+			// The CF 6 schema had no CFOnK8s field, so it dropped this
+			// difference and wrongly reported the target as already saved.
+			Expect(targetsPlugin.status.currentNeedsSaving).To(BeTrue())
+		})
+
+		It("reports no change when identical configs carry a CF-on-Kubernetes block", func() {
+			linkCurrentTo("k8s")
+			same := cfConfig(map[string]interface{}{
+				"CFOnK8s": map[string]interface{}{"Enabled": true, "AuthInfo": "alice"},
+			})
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath:  same,
+				targetsPlugin.currentPath: same,
+			}
+
+			targetsPlugin.checkStatus()
+
+			Expect(targetsPlugin.status.currentNeedsSaving).To(BeFalse())
+		})
+
+		It("preserves every CF 8 field through a load and marshal round trip", func() {
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: cfConfig(map[string]interface{}{
+					"CFOnK8s":      map[string]interface{}{"Enabled": true, "AuthInfo": "alice"},
+					"AsyncTimeout": 42,
+					"UAAGrantType": "client_credentials",
+				}),
+			}
+
+			config := targetsPlugin.loadConfig(targetsPlugin.configPath)
+
+			Expect(config.CFOnK8s.Enabled).To(BeTrue())
+			Expect(config.CFOnK8s.AuthInfo).To(Equal("alice"))
+			Expect(config.AsyncTimeout).To(Equal(42))
+			Expect(config.UAAGrantType).To(Equal("client_credentials"))
+
+			round, err := marshalConfig(config)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(round)).To(ContainSubstring(`"AuthInfo": "alice"`))
+			Expect(string(round)).To(ContainSubstring(`"AsyncTimeout": 42`))
+		})
+
+		It("treats a config from an older CLI version as empty", func() {
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: []byte(`{"ConfigVersion": 1, "Target": "https://old.example.com"}`),
+			}
+
+			config := targetsPlugin.loadConfig(targetsPlugin.configPath)
+
+			Expect(config.Target).To(BeEmpty())
+		})
+
+		It("treats an empty config file as empty rather than failing", func() {
+			fakeOS.readfileShouldReturnMap = map[string][]byte{
+				targetsPlugin.configPath: []byte("  \n"),
+			}
+
+			config := targetsPlugin.loadConfig(targetsPlugin.configPath)
+
+			Expect(config.Target).To(BeEmpty())
+			Expect(fakeOS.exitCalled).To(Equal(0))
+		})
+	})
+
+	Describe("embedded diff licence", func() {
+		// The BSD-3 binary clause requires distributed binaries to reproduce the
+		// copyright notice, the conditions and the disclaimer. The notice is
+		// embedded from internal/diff/LICENSE rather than copied, so these
+		// assertions guard the licence file itself against being truncated.
+		It("carries the copyright notice", func() {
+			Expect(diffLicense).To(ContainSubstring("Copyright 2009 The Go Authors."))
+		})
+
+		It("carries all three redistribution conditions", func() {
+			Expect(diffLicense).To(ContainSubstring("Redistributions of source code must retain"))
+			Expect(diffLicense).To(ContainSubstring("Redistributions in binary form must reproduce"))
+			Expect(diffLicense).To(ContainSubstring("Neither the name of Google LLC"))
+		})
+
+		It("carries the warranty disclaimer in full", func() {
+			Expect(diffLicense).To(ContainSubstring("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS"))
+			Expect(diffLicense).To(ContainSubstring("EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."))
+		})
+	})
+
 	Describe("createBuildMeta", func() {
 		It("returns os.arch when no build metadata", func() {
 			Expect(createBuildMeta("darwin", "arm64", "")).To(Equal("darwin.arm64"))
@@ -546,7 +786,7 @@ var _ = Describe("TargetsPlugin", func() {
 			targetJSON := makeJSON(map[string]interface{}{"ColorEnabled": "false"})
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:             currentJSON,
+				targetsPlugin.currentPath:         currentJSON,
 				targetsPlugin.targetPath("other"): targetJSON,
 			}
 
@@ -563,7 +803,7 @@ var _ = Describe("TargetsPlugin", func() {
 			jsonData := makeJSON(nil)
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:             jsonData,
+				targetsPlugin.currentPath:        jsonData,
 				targetsPlugin.targetPath("same"): jsonData,
 			}
 
@@ -584,7 +824,7 @@ var _ = Describe("TargetsPlugin", func() {
 			})
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:                currentJSON,
+				targetsPlugin.currentPath:            currentJSON,
 				targetsPlugin.targetPath("redacted"): targetJSON,
 			}
 
@@ -608,7 +848,7 @@ var _ = Describe("TargetsPlugin", func() {
 			otherJSON := []byte(`{"Target": "https://api.example.com", "ColorEnabled": "false"}`)
 
 			fakeOS.readfileShouldReturnMap = map[string][]byte{
-				targetsPlugin.currentPath:                minimalJSON,
+				targetsPlugin.currentPath:           minimalJSON,
 				targetsPlugin.targetPath("minimal"): otherJSON,
 			}
 

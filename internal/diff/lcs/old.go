@@ -16,10 +16,6 @@ type Diff struct {
 	ReplStart, ReplEnd int // offset of replacement text in B
 }
 
-// DiffStrings returns the differences between two strings.
-// It does not respect rune boundaries.
-func DiffStrings(a, b string) []Diff { return diff(stringSeqs{a, b}) }
-
 // DiffBytes returns the differences between two byte sequences.
 // It does not respect rune boundaries.
 func DiffBytes(a, b []byte) []Diff { return diff(bytesSeqs{a, b}) }
@@ -27,13 +23,13 @@ func DiffBytes(a, b []byte) []Diff { return diff(bytesSeqs{a, b}) }
 // DiffRunes returns the differences between two rune sequences.
 func DiffRunes(a, b []rune) []Diff { return diff(runesSeqs{a, b}) }
 
-// DiffLines returns the differences between two lists of lines.
-// It treats each string as an atomic unit, comparable by ==.
+// DiffLines returns the differences between two string sequences.
 func DiffLines(a, b []string) []Diff { return diff(linesSeqs{a, b}) }
 
+// A limit on how deeply the LCS algorithm should search. The value is just a guess.
+var maxDiffs = 100
+
 func diff(seqs sequences) []Diff {
-	// A limit on how deeply the LCS algorithm should search. The value is just a guess.
-	const maxDiffs = 100
 	diff, _ := compute(seqs, twosided, maxDiffs/2)
 	return diff
 }
@@ -192,6 +188,8 @@ func (e *editGraph) getForward(d, k int) int {
 // --- BACKWARD ---
 
 // bdone decides if the backward path has reached the lower left corner
+//
+//nolint:unused // vendored from x/tools; kept to match upstream
 func (e *editGraph) bdone(D, k int) (bool, lcs) {
 	// x, y, k are relative to the rectangle
 	x := e.vb.get(D, k)
@@ -204,6 +202,8 @@ func (e *editGraph) bdone(D, k int) (bool, lcs) {
 
 // run the backward algorithm, until success or up to the limit on D.
 // (used only by tests)
+//
+//nolint:unused // vendored from x/tools; kept to match upstream
 func backward(e *editGraph) lcs {
 	e.setBackward(0, 0, e.ux)
 	if ok, ans := e.bdone(0, 0); ok {
@@ -382,10 +382,7 @@ func (e *editGraph) twoDone(df, db int) (int, bool) {
 		return 0, false // diagonals cannot overlap
 	}
 	kmin := max(-df, -db+e.delta)
-	kmax := db + e.delta
-	if df < kmax {
-		kmax = df
-	}
+	kmax := min(df, db+e.delta)
 	for k := kmin; k <= kmax; k += 2 {
 		x := e.vf.get(df, k)
 		u := e.vb.get(db, k-e.delta)

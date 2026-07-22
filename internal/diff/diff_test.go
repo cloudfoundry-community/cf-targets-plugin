@@ -247,8 +247,8 @@ func TestMergeEmpty(t *testing.T) {
 
 func TestLinesIdentical(t *testing.T) {
 	edits := Lines("hello\n", "hello\n")
-	if edits != nil {
-		t.Errorf("Lines() for identical strings = %v, want nil", edits)
+	if len(edits) != 0 {
+		t.Errorf("Lines() for identical strings = %v, want no edits", edits)
 	}
 }
 
