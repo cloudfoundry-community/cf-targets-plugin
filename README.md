@@ -1,7 +1,7 @@
 CF Targets Plugin
 =================
 
-[![Build Status](https://travis-ci.org/norman-abramovitz/cf-targets-plugin.svg?branch=master)](https://travis-ci.org/norman-abramovitz/cf-targets-plugin)
+[![Release](https://github.com/cloudfoundry-community/cf-targets-plugin/actions/workflows/release.yml/badge.svg)](https://github.com/cloudfoundry-community/cf-targets-plugin/actions/workflows/release.yml)
 
 This plugin facilitates the use of multiple api targets with the Cloud Foundry CLI.
 
