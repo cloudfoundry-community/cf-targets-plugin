@@ -1,4 +1,4 @@
-module github.com/norman-abramovitz/cf-targets-plugin
+module github.com/cloudfoundry-community/cf-targets-plugin
 
 go 1.26.4
 

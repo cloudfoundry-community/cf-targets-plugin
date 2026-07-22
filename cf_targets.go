@@ -18,7 +18,7 @@ import (
 
 	"code.cloudfoundry.org/cli/v8/plugin"
 	"code.cloudfoundry.org/cli/v8/util/configv3"
-	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff"
+	"github.com/cloudfoundry-community/cf-targets-plugin/internal/diff"
 )
 
 // There are three files that target plugin keeps track of

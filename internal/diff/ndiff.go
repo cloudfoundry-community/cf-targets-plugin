@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/norman-abramovitz/cf-targets-plugin/internal/diff/lcs"
+	"github.com/cloudfoundry-community/cf-targets-plugin/internal/diff/lcs"
 )
 
 // Lines computes differences between two strings. All edits are at line boundaries.
