@@ -43,9 +43,9 @@ checksum:
   algorithm: sha256
 
 release:
-  github:
-    owner: cloudfoundry-community
-    name: cf-targets-plugin
+  # Repository is auto-detected from the git origin remote / GITHUB_REPOSITORY,
+  # so the release lands on whichever repo the workflow runs in rather than a
+  # hardcoded owner.
   draft: true
   prerelease: auto
   name_template: "v{{ .Version }}"
