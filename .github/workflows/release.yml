@@ -16,6 +16,11 @@ permissions:
 
 jobs:
   release:
+    # Only run on the canonical repository. Forks and clones carry this
+    # workflow too, so without this guard anyone pushing a v* tag would trigger
+    # a release build in their own copy. A fork that genuinely wants to publish
+    # its own releases can change this value.
+    if: github.repository == 'cloudfoundry-community/cf-targets-plugin'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
