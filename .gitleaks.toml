@@ -1,0 +1,22 @@
+# gitleaks configuration
+#
+# Keeps gitleaks' built-in rule set and only adds allowlist entries below.
+# See https://github.com/gitleaks/gitleaks for the config reference.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fixture secrets in the retired Godeps vendored dependency tree"
+# Godeps/_workspace/ is the legacy vendored third-party dependency tree. It was
+# removed from the working copy (commit 3aa1467) and now exists only in git
+# history, so gitleaks still scans it. The matches are fixture credentials in
+# upstream dependency tests and JWT examples in dependency docs, not this
+# project's secrets. Scope is limited to Godeps/ so the project's own test
+# files are still scanned.
+paths = [
+    # Dependency test fixtures (JWTs and API-key-shaped strings in *_test.go).
+    '''^Godeps/.*_test\.go$''',
+    # Dependency documentation examples (JWTs quoted in README.md files).
+    '''^Godeps/.*\.md$''',
+]
