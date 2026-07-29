@@ -14,16 +14,16 @@ plugins:
     homepage: https://github.com/norman-abramovitz
     name: Norman Abramovitz
   binaries:
-  - checksum: $(cat ${RELEASE_ROOT}/${PROJECT}*darwin.amd64*.sha1))
+  - checksum: $(awk '{print $1; exit}' ${RELEASE_ROOT}/${PROJECT}*darwin.amd64*.sha1)
     platform: osx-amd64
     url: https://github.com/${REPO_SLUG}/raw/${SEMVER_VERSION}/bin/osx-amd64/cf-targets-plugin
-  - checksum: $(cat ${RELEASE_ROOT}/${PROJECT}*darwin.arm64*.sha1))
+  - checksum: $(awk '{print $1; exit}' ${RELEASE_ROOT}/${PROJECT}*darwin.arm64*.sha1)
     platform: osx-arm64
     url: https://github.com/${REPO_SLUG}/raw/${SEMVER_VERSION}/bin/osx-arm64/cf-targets-plugin
-  - checksum: $(cat ${RELEASE_ROOT}/${PROJECT}*windows.amd64*.sha1))
+  - checksum: $(awk '{print $1; exit}' ${RELEASE_ROOT}/${PROJECT}*windows.amd64*.sha1)
     platform: win64
     url: https://github.com/${REPO_SLUG}/raw/${SEMVER_VERSION}/bin/win64/cf-targets-plugin.exe
-  - checksum: $(cat ${RELEASE_ROOT}/${PROJECT}*linux.amd64*.sha1))
+  - checksum: $(awk '{print $1; exit}' ${RELEASE_ROOT}/${PROJECT}*linux.amd64*.sha1)
     platform: linux64
     url: https://github.com/${REPO_SLUG}/raw/${SEMVER_VERSION}/bin/linux64/cf-targets-plugin
   company: null
